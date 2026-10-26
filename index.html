@@ -415,10 +415,12 @@ input[type=number]{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
         </div>
         <div class="sum-act">
           <button type="button" class="btn on-accent" id="sendBtn">Отправить клиенту</button>
+          <button type="button" class="btn line-accent" id="pdfBtn">Скачать PDF</button>
           <button type="button" class="btn line-accent" id="saveBtn">Сохранить в черновики</button>
           <button type="button" class="btn line-accent" id="copyBtn">Скопировать текстом</button>
         </div>
         <p class="note" id="saveNote" hidden></p>
+        <p class="note" id="pdfNote" hidden></p>
         <p class="note" id="quotaNote">Бета-версия: смет без ограничений. <button type="button" class="link-btn inline" data-goplan>Оставить отзыв</button></p>
         <textarea id="copyBox" class="copybox" readonly hidden aria-label="Текст сметы"></textarea>
       </div>
@@ -1312,12 +1314,193 @@ input[type=number]{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
     fullRender();
   });
 
+  /* ---------- PDF: страницы рисуются на canvas, затем собираются в PDF без внешних библиотек ---------- */
+  var PDF_W = 595, PDF_H = 842, PDF_M = 40, PDF_K = 1240 / 595;
+  var F_BODY = '"Golos Text", "Segoe UI", Roboto, Arial, sans-serif';
+  var F_DISP = '"Geologica", "Golos Text", "Segoe UI", Roboto, Arial, sans-serif';
+  function pdfFonts(){
+    try {
+      if(!document.fonts || !document.fonts.load) return Promise.resolve();
+      return Promise.all([
+        document.fonts.load('400 12px "Golos Text"'), document.fonts.load('600 12px "Golos Text"'),
+        document.fonts.load('700 12px "Geologica"')
+      ]).catch(function(){});
+    } catch(e){ return Promise.resolve(); }
+  }
+  function pdfPages(c){
+    var pages = [], cv, cx, y;
+    var date = new Date().toLocaleDateString('ru-RU', {day: 'numeric', month: 'long', year: 'numeric'});
+    function np(){
+      cv = document.createElement('canvas'); cv.width = 1240; cv.height = 1754;
+      cx = cv.getContext('2d'); cx.scale(PDF_K, PDF_K);
+      cx.fillStyle = '#ffffff'; cx.fillRect(0, 0, PDF_W, PDF_H);
+      cx.textBaseline = 'alphabetic';
+      pages.push(cv); y = PDF_M + 6;
+    }
+    function font(sz, wt, fam){ cx.font = (wt || 400) + ' ' + sz + 'px ' + (fam || F_BODY); }
+    function wrap(text, maxW){
+      var words = String(text).split(/\s+/), lines = [], cur = '';
+      words.forEach(function(w){
+        var t = cur ? cur + ' ' + w : w;
+        if(cx.measureText(t).width <= maxW || !cur) cur = t; else { lines.push(cur); cur = w; }
+      });
+      if(cur) lines.push(cur);
+      return lines.length ? lines : [''];
+    }
+    function need(h){ if(y + h > PDF_H - PDF_M - 20) np(); }
+    function textR(t, x){ cx.textAlign = 'right'; cx.fillText(t, x, y); cx.textAlign = 'left'; }
+    function hair(){ cx.strokeStyle = '#D5DAD2'; cx.lineWidth = 0.6; cx.beginPath(); cx.moveTo(PDF_M, y); cx.lineTo(PDF_W - PDF_M, y); cx.stroke(); }
+    function section(title){
+      need(40); y += 12;
+      font(13, 700, F_DISP); cx.fillStyle = '#1A2428'; cx.fillText(title, PDF_M, y); y += 8; hair(); y += 4;
+    }
+    function item(name, calc, sum){
+      font(10, 400); var lines = wrap(name, 245), h = lines.length * 13 + 7;
+      need(h);
+      cx.fillStyle = '#1A2428';
+      lines.forEach(function(ln, i){ cx.fillText(ln, PDF_M, y + 11 + i * 13); });
+      font(9, 400); cx.fillStyle = '#55636A';
+      cx.textAlign = 'right'; cx.fillText(calc, PDF_W - PDF_M - 82, y + 11); cx.textAlign = 'left';
+      font(10, 600); cx.fillStyle = '#1A2428';
+      cx.textAlign = 'right'; cx.fillText(sum, PDF_W - PDF_M, y + 11); cx.textAlign = 'left';
+      y += h;
+    }
+    np();
+    font(9, 600); cx.fillStyle = '#2347C8'; cx.fillText(String(state.masterName || '').toUpperCase(), PDF_M, y + 8); y += 26;
+    font(24, 700, F_DISP); cx.fillStyle = '#1A2428'; cx.fillText('Смета на отделку', PDF_M, y + 12); y += 28;
+    font(10, 400); cx.fillStyle = '#55636A';
+    wrap((state.object || 'Адрес не указан') + ' · для ' + (state.client || 'клиента без имени') + ' · от ' + date + ' · действует 14 дней', PDF_W - 2 * PDF_M).forEach(function(ln){ cx.fillText(ln, PDF_M, y + 10); y += 14; });
+    y += 10;
+    /* итоговая плашка */
+    cx.fillStyle = '#2347C8';
+    var bx = PDF_M, bw = PDF_W - 2 * PDF_M, bh = 62, r = 8;
+    cx.beginPath(); cx.moveTo(bx + r, y); cx.arcTo(bx + bw, y, bx + bw, y + bh, r); cx.arcTo(bx + bw, y + bh, bx, y + bh, r); cx.arcTo(bx, y + bh, bx, y, r); cx.arcTo(bx, y, bx + bw, y, r); cx.closePath(); cx.fill();
+    cx.fillStyle = '#ffffff'; font(10, 400); cx.fillText('Итого к оплате', bx + 16, y + 22);
+    font(22, 700, F_DISP); cx.textAlign = 'right'; cx.fillText(rub(c.total), bx + bw - 16, y + 30); cx.textAlign = 'left';
+    font(9, 400); cx.fillText('работа ' + rub(c.workTotal - c.disc) + ' · материалы ' + rub(c.matTotal), bx + 16, y + 46);
+    y += bh + 6;
+
+    var rooms = state.rooms.filter(function(rm){ return c.perRoom[rm.id].items.length; });
+    if(rooms.length){
+      section('Работы по комнатам');
+      rooms.forEach(function(rm){
+        var p = c.perRoom[rm.id];
+        need(34); y += 8;
+        font(10.5, 700); cx.fillStyle = '#1A2428'; cx.fillText(nameOf(rm), PDF_M, y + 10);
+        font(10.5, 700); cx.textAlign = 'right'; cx.fillText(rub(p.sum), PDF_W - PDF_M, y + 10); cx.textAlign = 'left';
+        y += 18;
+        p.items.forEach(function(i){ item(i.name, qtyStr(i.qty, i.unit) + ' × ' + rub(i.price), rub(i.sum)); });
+      });
+    } else {
+      section('Работы по комнатам');
+      font(10, 400); cx.fillStyle = '#55636A'; cx.fillText('В смету пока не добавлены работы.', PDF_M, y + 12); y += 20;
+    }
+    section('Материалы');
+    var matRows = c.matLines.filter(function(l){ return l.m.on && l.packs > 0; });
+    if(matRows.length){
+      matRows.forEach(function(l){ item(l.m.name, l.packs + ' ' + l.m.word + ' × ' + rub(l.price), rub(l.sum)); });
+    } else {
+      font(10, 400); cx.fillStyle = '#55636A'; cx.fillText('Материалы в смету не входят.', PDF_M, y + 12); y += 20;
+    }
+    /* итоги */
+    need(110); y += 14; hair(); y += 6;
+    function sumLine(label, val, big){
+      font(big ? 13 : 10.5, big ? 700 : 400, big ? F_DISP : F_BODY); cx.fillStyle = '#1A2428';
+      cx.fillText(label, PDF_M, y + 12); cx.textAlign = 'right'; cx.fillText(val, PDF_W - PDF_M, y + 12); cx.textAlign = 'left';
+      y += big ? 24 : 18;
+    }
+    sumLine('Работы', rub(c.workTotal));
+    if(c.disc > 0) sumLine('Скидка ' + nf(state.discount, 0) + '%', '−' + rub(c.disc));
+    sumLine('Материалы', rub(c.matTotal));
+    hair(); y += 4;
+    sumLine('Итого', rub(c.total), true);
+    if(y + 40 > PDF_H - 34) np();
+    y += 8;
+    font(8.5, 400); cx.fillStyle = '#55636A';
+    wrap('Расчёт ориентировочный: объёмы и цены уточняются после замера на объекте. Количество материалов округлено до целых упаковок. Смета действует 14 дней.', PDF_W - 2 * PDF_M).forEach(function(ln){ cx.fillText(ln, PDF_M, y + 9); y += 12; });
+    /* номера страниц */
+    pages.forEach(function(pg, idx){
+      var g = pg.getContext('2d');
+      g.font = '400 8px ' + F_BODY; g.fillStyle = '#8A969C'; g.textAlign = 'right';
+      g.fillText('Стр. ' + (idx + 1) + ' из ' + pages.length, PDF_W - PDF_M, PDF_H - 24);
+      g.textAlign = 'left'; g.fillText(state.masterName || '', PDF_M, PDF_H - 24);
+    });
+    return pages;
+  }
+  function pdfBytes(pages){
+    function enc(s){ var u = new Uint8Array(s.length); for(var i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 255; return u; }
+    var parts = [], offs = [], pos = 0;
+    function push(b){ if(typeof b === 'string') b = enc(b); parts.push(b); pos += b.length; }
+    function startObj(n){ offs[n] = pos; push(n + ' 0 obj\n'); }
+    var imgs = pages.map(function(cv){
+      var b64 = cv.toDataURL('image/jpeg', 0.88).split(',')[1], bin = atob(b64), u = new Uint8Array(bin.length);
+      for(var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      return u;
+    });
+    push('%PDF-1.4\n');
+    startObj(1); push('<< /Type /Catalog /Pages 2 0 R >>\nendobj\n');
+    var kids = pages.map(function(_, i){ return (3 + i * 3) + ' 0 R'; }).join(' ');
+    startObj(2); push('<< /Type /Pages /Kids [' + kids + '] /Count ' + pages.length + ' >>\nendobj\n');
+    pages.forEach(function(_, i){
+      var pn = 3 + i * 3, cn = pn + 1, im = pn + 2;
+      startObj(pn); push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + PDF_W + ' ' + PDF_H + '] /Resources << /XObject << /Im0 ' + im + ' 0 R >> >> /Contents ' + cn + ' 0 R >>\nendobj\n');
+      var content = 'q ' + PDF_W + ' 0 0 ' + PDF_H + ' 0 0 cm /Im0 Do Q';
+      startObj(cn); push('<< /Length ' + content.length + ' >>\nstream\n' + content + '\nendstream\nendobj\n');
+      startObj(im); push('<< /Type /XObject /Subtype /Image /Width 1240 /Height 1754 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + imgs[i].length + ' >>\nstream\n');
+      push(imgs[i]); push('\nendstream\nendobj\n');
+    });
+    var total = 3 + pages.length * 3, xref = pos;
+    push('xref\n0 ' + total + '\n0000000000 65535 f \n');
+    for(var n = 1; n < total; n++) push(('0000000000' + offs[n]).slice(-10) + ' 00000 n \n');
+    push('trailer\n<< /Size ' + total + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF');
+    return new Blob(parts, {type: 'application/pdf'});
+  }
+  function makePdfFile(){
+    return pdfFonts().then(function(){
+      var blob = pdfBytes(pdfPages(calc()));
+      var d = new Date(), iso = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+      var name = 'smeta-' + iso + '.pdf';
+      try { return new File([blob], name, {type: 'application/pdf'}); } catch(e){ blob.name = name; return blob; }
+    });
+  }
+  function downloadFile(file){
+    var url = URL.createObjectURL(file), a = document.createElement('a');
+    a.href = url; a.download = file.name || 'smeta.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+  }
+  function pdfNote(t){ var n = $('#pdfNote'); n.textContent = t; n.hidden = !t; }
+  function deliverPdf(share){
+    pdfNote('Собираю PDF…');
+    return makePdfFile().then(function(file){
+      var canShare = share && window.matchMedia && matchMedia('(pointer:coarse)').matches && navigator.canShare && navigator.share;
+      try { canShare = canShare && navigator.canShare({files: [file]}); } catch(e){ canShare = false; }
+      if(canShare){
+        return navigator.share({files: [file], title: 'Смета на отделку'}).then(function(){ pdfNote(''); return 'shared'; }, function(err){
+          if(err && err.name === 'AbortError'){ pdfNote('Отправка отменена. Смета осталась черновиком.'); return 'cancelled'; }
+          downloadFile(file); pdfNote('PDF сохранён в загрузки. Отправьте файл клиенту в мессенджере или по почте.'); return 'downloaded';
+        });
+      }
+      downloadFile(file);
+      pdfNote('PDF сохранён в загрузки. Отправьте файл клиенту в мессенджере или по почте. Если файла нет, откройте сайт в обычном браузере: в окне предпросмотра скачивание не работает.');
+      return 'downloaded';
+    }).catch(function(){ pdfNote('Не удалось собрать PDF. Попробуйте ещё раз.'); return 'error'; });
+  }
+  $('#pdfBtn').addEventListener('click', function(){
+    var b = $('#pdfBtn'); b.disabled = true;
+    deliverPdf(false).then(function(){ b.disabled = false; });
+  });
+
   /* ---------- send, copy, client ---------- */
   $('#sendBtn').addEventListener('click', function(){
     if(state.status !== 'draft') return;
-    state.status = 'sent';
-    log('Смета отправлена клиенту. В сервисе уйдёт ссылкой в Telegram, WhatsApp или VK.', 'info');
-    refresh();
+    var b = $('#sendBtn'); b.disabled = true;
+    deliverPdf(true).then(function(res){
+      if(res === 'cancelled' || res === 'error'){ b.disabled = false; return; }
+      state.status = 'sent';
+      log(res === 'shared' ? 'Смета в PDF отправлена клиенту через «Поделиться».' : 'PDF сметы сохранён. Отправьте файл клиенту. В сервисе позже уйдёт ссылкой в Telegram, WhatsApp или VK.', 'info');
+      refresh();
+    });
   });
   $('#copyBtn').addEventListener('click', function(){
     var text = buildText(calc());
