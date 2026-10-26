@@ -362,6 +362,7 @@ input[type=number]{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
       <div class="m-bar">
         <button type="button" class="btn" id="newBtn">+ Новая смета</button>
         <span class="note" id="newNote" hidden></span>
+        <span class="note" id="autoNote"></span>
       </div>
       <button type="button" class="guide-cta" data-guide="home"><span class="gc-ic" aria-hidden="true">📱</span><span class="gc-tx"><b>Добавить Сметку на экран телефона</b><small>Откроется одним нажатием, как приложение</small></span><span class="gc-ar" aria-hidden="true">›</span></button>
       <details class="drafts" id="draftsBox">
@@ -498,6 +499,20 @@ input[type=number]{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
           <button type="button" class="link-btn" id="impMSample" style="margin:0">Вставить пример</button>
         </div>
         <p class="note" id="impMNote" hidden></p>
+      </div>
+    </div>
+
+    <div>
+      <h2 class="h">Резервная копия</h2>
+      <p class="hint">Прайс, материалы и сметы хранятся в этом браузере на этом устройстве. Сохраните копию в файл, чтобы перенести данные на другой телефон или вернуть после очистки браузера.</p>
+      <div class="addbox">
+        <div class="row-btns">
+          <button type="button" class="btn" id="bkSave">Сохранить копию в файл</button>
+          <label class="btn" for="bkFile" style="cursor:pointer">Загрузить из файла</label>
+          <input type="file" id="bkFile" accept="application/json,.json" hidden>
+        </div>
+        <p class="note" id="bkNote" hidden></p>
+        <div class="row-btns"><button type="button" class="btn primary" id="bkOk" hidden>Заменить данные</button></div>
       </div>
     </div>
 
@@ -1769,6 +1784,7 @@ input[type=number]{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
         return '<button type="button" data-gtab="' + t[0] + '" aria-pressed="' + (t[0] === guideTab) + '">' + t[1] + '</button>'; }).join('') + '</div>' +
       '<ol class="g-steps">' + GUIDE[guideTab].map(function(s){ return '<li>' + s + '</li>'; }).join('') + '</ol>' +
       '<p class="note">Названия пунктов могут чуть отличаться в зависимости от версии телефона. Иконка берётся из сайта: сначала откройте именно ту ссылку, которую вам дали.</p>' +
+      '<p class="note"><b>Важно про данные.</b> Прайс и сметы хранятся в браузере. На iPhone иконка на экране и Safari хранят их отдельно: настраивайте прайс там, откуда будете пользоваться, или перенесите через «Резервную копию» на вкладке «Прайс».</p>' +
       '<div class="row-btns"><button type="button" class="btn primary" data-doc-back>Понятно</button></div>';
   }
   function openGuide(){
@@ -1909,11 +1925,96 @@ input[type=number]{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
     if(e.key === 'Escape' && !$('#overlay').hidden) closeSheet();
   });
 
+  /* ---------- автосохранение текущей сметы и резервная копия ---------- */
+  var CUR = 'smetka-current-v1';
+  var curTimer = null, skipStore = false;
+  function stSnap(){
+    return {
+      status: state.status, opened: state.opened, approved: state.approved,
+      approvedAt: state.approvedAt ? state.approvedAt.getTime() : null,
+      events: state.events.map(function(e){ return {t: e.t.getTime(), text: e.text, kind: e.kind}; })
+    };
+  }
+  function storeCurrent(){
+    if(skipStore) return;
+    var n = $('#autoNote');
+    try {
+      localStorage.setItem(CUR, JSON.stringify({snap: core(), st: stSnap(), draftId: state.draftId || null, ts: Date.now()}));
+      n.textContent = 'Сохранено на этом устройстве в ' + hhmm(new Date());
+    } catch(e){
+      n.textContent = 'Браузер не разрешает сохранять данные, возможно, включён приватный режим. Прайс и сметы пропадут после закрытия.';
+    }
+  }
+  function scheduleStore(){ clearTimeout(curTimer); curTimer = setTimeout(storeCurrent, 500); }
+  ['input', 'change', 'click'].forEach(function(ev){ document.addEventListener(ev, scheduleStore, true); });
+  window.addEventListener('pagehide', storeCurrent);
+  document.addEventListener('visibilitychange', function(){ if(document.hidden) storeCurrent(); });
+  function restoreCurrent(){
+    try {
+      var raw = localStorage.getItem(CUR);
+      if(!raw) return;
+      var d = JSON.parse(raw);
+      if(!d || !d.snap || !Array.isArray(d.snap.rooms) || !d.snap.rooms.length || !Array.isArray(d.snap.works)) return;
+      state.draftId = d.draftId && drafts.some(function(x){ return x.id === d.draftId; }) ? d.draftId : null;
+      applyState(d.snap, d.st);
+      lastSig = '';
+      renderDrafts();
+      $('#autoNote').textContent = 'Продолжаем с того места, где вы остановились.';
+    } catch(e){}
+  }
+
+  var BK_KEYS = [LS, DLS, CUR, SURVEY_LS], bkPending = null;
+  function bkNote(t){ var n = $('#bkNote'); n.textContent = t; n.hidden = !t; }
+  $('#bkSave').addEventListener('click', function(){
+    storeCurrent();
+    var data = {};
+    BK_KEYS.forEach(function(k){ try { data[k] = localStorage.getItem(k); } catch(e){ data[k] = null; } });
+    var d = new Date(), iso = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    var blob = new Blob([JSON.stringify({app: 'smetka', v: 1, saved: d.toISOString(), data: data})], {type: 'application/json'});
+    var url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = 'smetka-backup-' + iso + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+    bkNote('Копия сохранена в файл ' + a.download + '. Если файла нет, откройте сайт в обычном браузере: в окне предпросмотра скачивание не работает.');
+  });
+  $('#bkFile').addEventListener('change', function(e){
+    var f = e.target.files && e.target.files[0];
+    $('#bkOk').hidden = true; bkPending = null;
+    if(!f) return;
+    var fr = new FileReader();
+    fr.onload = function(){
+      try {
+        var o = JSON.parse(String(fr.result));
+        if(!o || o.app !== 'smetka' || !o.data) throw new Error('bad');
+        bkPending = o;
+        var when = o.saved ? new Date(o.saved).toLocaleString('ru-RU', {day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit'}) : '';
+        bkNote('Нашёл копию' + (when ? ' от ' + when : '') + '. Прайс, материалы и сметы на этом устройстве будут заменены ими.');
+        $('#bkOk').hidden = false;
+      } catch(err){ bkNote('Этот файл не похож на копию «Сметки».'); }
+    };
+    fr.onerror = function(){ bkNote('Не удалось прочитать файл.'); };
+    fr.readAsText(f);
+    e.target.value = '';
+  });
+  $('#bkOk').addEventListener('click', function(){
+    if(!bkPending) return;
+    skipStore = true; clearTimeout(curTimer);
+    try {
+      BK_KEYS.forEach(function(k){
+        var v = bkPending.data[k];
+        if(typeof v === 'string') localStorage.setItem(k, v);
+      });
+      location.reload();
+    } catch(e){ skipStore = false; bkNote('Не удалось записать данные. Проверьте, что браузер разрешает сохранение.'); }
+  });
+  try { if(navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(function(){}); } catch(e){}
+
   document.body.dataset.view = 'master';
   load();
   renderRooms(); fullRender(); refresh();
   loadDrafts(); lastSig = sig(); renderDrafts();
   initSurvey();
+  restoreCurrent();
 })();
 </script>
 
