@@ -1,0 +1,1738 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2347C8">
+<meta name="description" content="Сметка: расчёт сметы на ремонт и отделку за пару минут. Бета-версия.">
+<title>Сметка</title>
+<link rel="icon" type="image/svg+xml" href="icons/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Сметка">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geologica:wght@500..700&family=Golos+Text:wght@400..700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  /* Layout: слева рабочая колонка (смета или прайс), справа живой вид клиента; на телефоне три вкладки */
+  --bg:#E8EBE5;
+  --surface:#F6F7F3;
+  --ink:#1A2428;
+  --ink-2:#55636A;
+  --line:#C9D0C6;
+  --accent:#2347C8;
+  --accent-ink:#FFFFFF;
+  --accent-soft:#DAE2FA;
+  --ok:#25744A;
+  --ok-soft:#D6EAD9;
+  --warn:#8A5800;
+  --warn-soft:#F2E2B8;
+  --mark:#E9E1C6;
+  --f-display:"Geologica",system-ui,sans-serif;
+  --f-body:"Golos Text",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#12181A;--surface:#1B2326;--ink:#E7ECE8;--ink-2:#9AA8AD;--line:#2E3A3E;
+    --accent:#8CA4FF;--accent-ink:#0E1430;--accent-soft:#232C52;
+    --ok:#6FCB93;--ok-soft:#1F3A2B;--warn:#E8B65A;--warn-soft:#3D3216;--mark:#3A3626;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#12181A;--surface:#1B2326;--ink:#E7ECE8;--ink-2:#9AA8AD;--line:#2E3A3E;
+  --accent:#8CA4FF;--accent-ink:#0E1430;--accent-soft:#232C52;
+  --ok:#6FCB93;--ok-soft:#1F3A2B;--warn:#E8B65A;--warn-soft:#3D3216;--mark:#3A3626;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+h2,h3,p,ul{margin:0}
+ul{padding:0;list-style:none}
+button,input,textarea,select{font:inherit;color:inherit}
+.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* top bar */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--bg);border-bottom:1px solid var(--line)}
+.top-in{max-width:1120px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.brand{display:flex;align-items:baseline;gap:10px}
+.brand b{font-family:var(--f-display);font-weight:700;font-size:1.25rem;letter-spacing:-.01em}
+.brand span{font-family:var(--f-mono);font-size:.7rem;color:var(--ink-2);text-transform:uppercase;letter-spacing:.08em}
+.tabs{display:flex;gap:4px;padding:3px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.tabs button{border:0;background:transparent;padding:7px 14px;border-radius:7px;font-weight:600;font-size:.875rem;color:var(--ink-2);cursor:pointer;min-height:36px}
+.tabs button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+#tabClient{display:none}
+.wide-note{font-size:.8125rem;color:var(--ink-2)}
+
+/* layout */
+.shell{max-width:1120px;margin:0 auto;padding-block:24px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;grid-template-columns:minmax(0,1fr) minmax(0,420px);gap:40px;align-items:start}
+.panel-master,.panel-price,.panel-plan{display:flex;flex-direction:column;gap:32px;min-width:0}
+.panel-client{min-width:0;position:sticky;top:calc(env(safe-area-inset-top,0px) + 68px);max-height:calc(100vh - 90px);overflow-y:auto}
+body:not([data-view="price"]) .panel-price{display:none}
+body:not([data-view="plan"]) .panel-plan{display:none}
+body[data-view="price"] .panel-master,body[data-view="plan"] .panel-master{display:none}
+@media (max-width:959px){
+  .shell{grid-template-columns:minmax(0,1fr);gap:0;padding-top:16px}
+  .brand span,.wide-note{display:none}
+  .tabs button{padding:7px 9px;font-size:.8125rem}
+  .top-in{flex-wrap:wrap}
+  #tabClient{display:inline-block}
+  body[data-view="master"] .panel-client,body[data-view="price"] .panel-client,body[data-view="plan"] .panel-client{display:none}
+  body[data-view="client"] .panel-master{display:none}
+  .panel-client{position:static;max-height:none;overflow:visible}
+  body[data-view="master"] .panel-master{padding-bottom:84px}
+  body[data-view="price"] .panel-price,body[data-view="plan"] .panel-plan{padding-bottom:24px}
+}
+
+/* blocks */
+.h{display:flex;align-items:center;gap:10px;font-family:var(--f-display);font-weight:600;font-size:1.125rem;letter-spacing:-.005em;margin-bottom:10px;text-wrap:balance}
+.h .count{font-size:.75rem;font-weight:500;color:var(--ink-2)}
+.step{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:6px;background:var(--ink);color:var(--bg);font-family:var(--f-mono);font-size:.75rem;font-weight:500}
+.hint{color:var(--ink-2);font-size:.8125rem;margin-bottom:12px;max-width:62ch}
+.lbl{display:block;font-size:.6875rem;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-2);margin-bottom:4px}
+input[type=text],input[type=number],textarea,select{width:100%;min-width:0;min-height:44px;padding:9px 11px;background:var(--surface);border:1px solid var(--line);border-radius:8px}
+select{width:auto;max-width:100%}
+textarea{resize:vertical}
+input[type=number]{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 16px;border-radius:8px;border:1px solid var(--line);background:var(--surface);font-weight:600;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.ghost{border-style:dashed;background:transparent;width:100%;color:var(--ink-2)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* rooms */
+.room{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
+.room-head{display:flex;gap:8px;margin-bottom:10px}
+.room-head .name{font-family:var(--f-display);font-weight:600;font-size:1rem}
+.icon-btn{flex:none;width:44px;height:44px;border:1px solid var(--line);border-radius:8px;background:transparent;font-size:1.25rem;line-height:1;color:var(--ink-2);cursor:pointer}
+.dims{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:8px}
+.open{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.derived{font-size:.78rem;color:var(--ink-2);margin-top:8px}
+.room .derived{margin-top:10px}
+.ovr{font-size:.78rem;color:var(--warn);margin-top:6px}
+.ovr[hidden]{display:none}
+
+/* works / materials: one panel, rows divided by hairlines */
+.list{background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.work,.mat,.pw,.pm{padding:12px}
+.work+.work,.mat+.mat,.pw+.pw,.pm+.pm{border-top:1px solid var(--line)}
+.work-top,.pw-top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
+.work-top{margin-bottom:8px}
+.work-top h3{font-size:.95rem;font-weight:600;flex:1 1 200px}
+.price{display:flex;align-items:center;gap:8px;font-size:.8125rem;color:var(--ink-2)}
+.price input{width:92px;text-align:right}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{min-height:36px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;font-size:.8125rem;font-weight:500;color:var(--ink-2);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
+.mat{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 12px;align-items:center}
+.check{display:flex;align-items:center;gap:10px;font-weight:500;cursor:pointer;min-width:0}
+.check input{width:20px;height:20px;accent-color:var(--accent);flex:none}
+.mat .price input{width:84px}
+.mat .derived,.mat .ovr{grid-column:1/-1;margin-top:0}
+
+/* price panel */
+.price-note{padding:10px 12px;background:var(--warn-soft);border-radius:8px;font-size:.8125rem;max-width:62ch}
+.price-note[hidden]{display:none}
+.pw-name{font-weight:600}
+.pw.off .pw-name{color:var(--ink-2);text-decoration:line-through}
+.pw.off .pw-top .price,.pw.off .pw-row2,.pw.off .norms{opacity:.55}
+.pw-row2{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;margin-top:8px}
+.inl{display:flex;align-items:center;gap:8px;font-size:.8125rem;color:var(--ink-2)}
+.tag{font-family:var(--f-mono);font-size:.6875rem;padding:2px 8px;border-radius:999px;background:var(--accent-soft);color:var(--ink)}
+.norms{margin-top:6px}
+.norms summary{cursor:pointer;font-size:.8125rem;font-weight:600;color:var(--accent);padding:8px 0;min-height:36px;display:flex;align-items:center}
+.norm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px 16px;padding-bottom:6px}
+.norm{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:.8125rem}
+.norm>span:first-child{min-width:0;overflow-wrap:anywhere}
+.nin{display:flex;align-items:center;gap:6px;flex:none;color:var(--ink-2)}
+.nin input{width:78px;text-align:right}
+.pm{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px}
+.pm-name{display:flex;flex-direction:column;min-width:0;flex:1 1 200px}
+.pm-name .derived{margin-top:2px}
+.addbox{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.addbox .derived{margin:0}
+.row-btns{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+
+/* total */
+.sum{background:var(--accent);color:var(--accent-ink);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:12px}
+.sum-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;font-size:.9rem}
+.sum-row.two{grid-template-columns:minmax(0,1fr) auto}
+.sum-row input{width:72px;text-align:right;color:var(--ink);background:var(--surface)}
+.sum-row b{font-weight:500}
+.sum-total{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-top:12px;border-top:1px solid currentColor;border-top-color:color-mix(in srgb,var(--accent-ink) 35%,transparent)}
+.sum-total strong{font-family:var(--f-display);font-weight:600;font-size:2rem;line-height:1.1;letter-spacing:-.02em}
+.sum-act{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.sum-act .btn{flex:1 1 150px}
+.btn.on-accent{background:var(--surface);color:var(--ink);border-color:var(--surface)}
+.btn.line-accent{background:transparent;color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent-ink) 55%,transparent)}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:4px 10px;border-radius:999px;font-size:.75rem;font-weight:600;background:var(--surface);color:var(--ink)}
+.pill::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ink-2)}
+.pill[data-s="sent"]::before{background:var(--accent)}
+.pill[data-s="opened"]::before{background:var(--warn)}
+.pill[data-s="approved"]::before{background:var(--ok)}
+.copybox{margin-top:8px;font-family:var(--f-mono);font-size:.75rem;min-height:120px}
+
+/* events */
+.events{background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.ev{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;padding:10px 12px;font-size:.9rem;overflow-wrap:anywhere}
+.ev+.ev{border-top:1px solid var(--line)}
+.ev time{font-size:.78rem;color:var(--ink-2);padding-top:2px}
+.ev.ok span{color:var(--ok);font-weight:600}
+.ev.open span{color:var(--warn);font-weight:600}
+.ev.empty{display:block;color:var(--ink-2)}
+.link-btn{margin-top:8px;border:0;background:none;padding:6px 0;color:var(--ink-2);text-decoration:underline;cursor:pointer;font-size:.8125rem;min-height:36px}
+.link-btn.inline{margin:0;display:inline;padding:0;min-height:0;color:var(--accent)}
+
+/* client view */
+.c-label{display:flex;align-items:center;gap:8px;font-size:.75rem;color:var(--ink-2);margin-bottom:8px}
+.paper{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:20px;display:flex;flex-direction:column;gap:18px}
+.c-draft{padding:10px 12px;background:var(--warn-soft);color:var(--ink);border-radius:6px;font-size:.8125rem}
+.c-from{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-2)}
+.c-head h2{font-family:var(--f-display);font-weight:600;font-size:1.25rem;margin:4px 0 6px;text-wrap:balance}
+.c-meta{font-size:.8125rem;color:var(--ink-2)}
+.c-total{display:flex;flex-direction:column;gap:2px;padding-block:14px;border-block:1px dashed var(--line)}
+.c-total span{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-2)}
+.c-total strong{font-family:var(--f-display);font-weight:600;font-size:2.25rem;line-height:1.1;letter-spacing:-.02em}
+.c-total small{font-size:.8125rem;color:var(--ink-2)}
+.c-sec h3{font-size:.6875rem;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-2);margin-bottom:6px}
+.c-room{border-bottom:1px solid var(--line)}
+.c-room summary{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 0;cursor:pointer;font-weight:600;list-style:none}
+.c-room summary::-webkit-details-marker{display:none}
+.c-room summary::after{content:"+";font-family:var(--f-mono);color:var(--ink-2);margin-left:4px}
+.c-room[open] summary::after{content:"−"}
+.c-room summary span{flex:1}
+.c-room ul{padding:0 0 10px}
+.c-room li,.c-mat li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:1px 12px;padding:6px 0;font-size:.875rem}
+.c-room li .nm,.c-mat li .nm{grid-column:1/-1}
+.c-room li .calc,.c-mat li .calc{font-size:.78rem;color:var(--ink-2)}
+.c-mat{padding:2px 12px;background:var(--mark);border-radius:6px}
+.c-mat li+li{border-top:1px solid color-mix(in srgb,var(--ink) 12%,transparent)}
+.c-lines{display:flex;flex-direction:column;gap:6px;font-size:.9rem}
+.c-lines div{display:flex;justify-content:space-between;gap:12px}
+.c-lines .grand{padding-top:8px;border-top:1px dashed var(--line);font-weight:700}
+.c-actions{display:flex;flex-direction:column;gap:10px}
+.c-btns{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.c-banner{padding:10px 12px;background:var(--ok-soft);color:var(--ok);font-weight:600;border-radius:6px;font-size:.875rem}
+.note{font-size:.8125rem;color:var(--ink-2)}
+#askForm{display:flex;flex-direction:column;gap:8px}
+
+/* drafts */
+.m-top{display:flex;flex-direction:column;gap:10px}
+.m-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
+.drafts{background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.drafts summary{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:8px 12px;cursor:pointer;font-weight:600;list-style:none}
+.drafts summary::-webkit-details-marker{display:none}
+.drafts summary::after{content:"+";font-family:var(--f-mono);color:var(--ink-2)}
+.drafts[open] summary::after{content:"−"}
+.dr{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;padding:10px 12px;border-top:1px solid var(--line)}
+.dr.empty{display:block;color:var(--ink-2);font-size:.875rem}
+.dr.cur{background:var(--accent-soft)}
+.dr-main{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 200px}
+.dr-main b{font-weight:600;overflow-wrap:anywhere}
+.dr-sub,.dr-meta{font-size:.78rem;color:var(--ink-2);overflow-wrap:anywhere}
+.dr-act{display:flex;gap:6px}
+.dr-act .btn{min-height:40px;padding:6px 12px;font-size:.875rem}
+.sum .note{color:inherit;opacity:.9}
+
+/* plan, sheet, footer */
+.plan-now{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.plan-now b{font-family:var(--f-display);font-weight:600;font-size:1.0625rem}
+.plan-now p{margin:0}
+.plan{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.plan.pro{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.plan-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.plan h3{font-family:var(--f-display);font-weight:600;font-size:1.0625rem}
+.plan .cost{font-family:var(--f-display);font-weight:600;font-size:1.75rem;letter-spacing:-.02em;line-height:1.1}
+.plan .cost small{font-family:var(--f-body);font-size:.8125rem;font-weight:400;color:var(--ink-2);letter-spacing:0}
+.plan ul{display:flex;flex-direction:column;gap:6px;font-size:.875rem}
+.plan li{padding-left:20px;position:relative}
+.plan li::before{content:"✓";position:absolute;left:0;color:var(--ok);font-weight:700}
+.plan .btn{margin-top:auto}
+.rules{display:flex;flex-direction:column;gap:8px;font-size:.875rem;max-width:62ch}
+.rules li{padding-left:16px;position:relative}
+.rules li::before{content:"–";position:absolute;left:0;color:var(--ink-2)}
+.overlay{position:fixed;inset:0;z-index:20;background:color-mix(in srgb,var(--ink) 55%,transparent);display:flex;align-items:center;justify-content:center;padding-block:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.sheet{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;width:100%;max-width:480px;max-height:100%;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:14px}
+.sheet:focus{outline:none}
+.sheet-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.sheet-head h2{font-family:var(--f-display);font-weight:600;font-size:1.125rem;text-wrap:balance;padding-top:8px}
+#sheetBody{display:flex;flex-direction:column;gap:12px}
+#sheetBody p{margin:0}
+.sheet .check{align-items:flex-start;font-weight:400;font-size:.875rem}
+.sheet .check input{margin-top:2px}
+.guide-cta{display:flex;align-items:center;gap:12px;width:100%;margin:0 0 10px;padding:12px 14px;min-height:56px;text-align:left;font:inherit;color:var(--ink);background:var(--surface);border:2px solid var(--accent);border-radius:12px;cursor:pointer}
+.guide-cta:hover{background:color-mix(in srgb,var(--accent) 8%,var(--surface))}
+.guide-cta:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.gc-ic{font-size:1.5rem;line-height:1}
+.gc-tx{flex:1;display:flex;flex-direction:column;gap:2px}
+.gc-tx b{font-weight:600;font-size:.95rem;color:var(--accent)}
+.gc-tx small{font-size:.78rem;color:var(--ink-2)}
+.gc-ar{font-size:1.6rem;color:var(--accent);line-height:1}
+.pm-edit{width:100%;font:inherit;font-weight:600}
+.mrow{display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:.8125rem;color:var(--ink-2);margin-top:4px}
+.mrow label{display:flex;gap:6px;align-items:center}
+.mrow input{width:90px}
+.wname{display:flex;gap:8px;align-items:center;margin:6px 0;font-size:.8125rem}
+.wname input{flex:1;min-width:0}
+.g-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px}
+.g-tabs button{border:1px solid var(--line,rgba(128,128,128,.35));background:var(--surface);color:var(--ink);border-radius:999px;padding:8px 14px;font:inherit;font-size:.8125rem;cursor:pointer;min-height:40px}
+.g-tabs button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.g-steps{list-style:none;counter-reset:g;display:flex;flex-direction:column;gap:10px;padding:0;margin:0 0 12px;font-size:.9rem}
+.g-steps li{counter-increment:g;position:relative;padding-left:36px;min-height:28px}
+.g-steps li::before{content:counter(g);position:absolute;left:0;top:0;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font:600 .8rem var(--f-mono);display:flex;align-items:center;justify-content:center}
+.g-steps b{font-weight:600}
+.doc-list{display:flex;flex-direction:column;gap:8px;font-size:.875rem;padding-left:18px;list-style:disc}
+.cons{align-items:flex-start;font-size:.8125rem;font-weight:400}
+.cons input{margin-top:2px}
+.c-legal{font-size:.78rem;color:var(--ink-2)}
+.sum .link-btn.inline{color:inherit;text-decoration:underline}
+.foot{max-width:1120px;margin:0 auto;padding-block:0 24px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-wrap:wrap;align-items:center;gap:0 18px;font-size:.78rem;color:var(--ink-2)}
+.foot .link-btn{margin:0;padding:4px 0;font-size:.78rem}
+@media (max-width:959px){.overlay{align-items:flex-end}.sheet{border-radius:14px 14px 0 0}.foot{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}}
+
+/* survey */
+#survey{scroll-margin-top:80px}
+.panel-plan .plan{max-width:480px}
+.survey{display:flex;flex-direction:column;gap:22px}
+.q{display:flex;flex-direction:column;gap:8px;min-width:0}
+.q-t{margin:0;font-weight:600;font-size:.9375rem;overflow-wrap:anywhere}
+.q-h{margin:-4px 0 0;font-size:.78rem;color:var(--ink-2)}
+.req{font-family:var(--f-mono);font-weight:400;font-size:.6875rem;color:var(--ink-2);margin-left:6px}
+.opt{display:flex;align-items:flex-start;gap:10px;min-height:44px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);cursor:pointer;font-size:.875rem}
+.opt:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.opt input{accent-color:var(--accent);width:18px;height:18px;flex:none;margin-top:1px}
+.scale{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.opt.sc{align-items:center;justify-content:center;padding:9px 0;font-family:var(--f-mono);font-size:1rem}
+.opt.sc input{position:absolute;opacity:0;pointer-events:none}
+.opt.sc:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:2px}
+.scale-legend{display:flex;justify-content:space-between;gap:12px;font-size:.75rem;color:var(--ink-2)}
+.q-err{margin:0;padding:10px 12px;background:var(--warn-soft);border-radius:8px;font-size:.875rem}
+.survey-done{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.survey-done h3{font-family:var(--f-display);font-weight:600;font-size:1.0625rem}
+.survey-done p{margin:0;font-size:.875rem}
+.survey-done .copybox{margin:0}
+
+.skipped{margin-top:12px}
+.skipped:empty{display:none}
+.skipped .chips{margin-top:2px}
+
+/* dock (phone only) */
+.dock{display:none}
+@media (max-width:959px){
+  body[data-view="master"] .dock{display:block;position:fixed;left:0;right:0;bottom:0;z-index:8;background:var(--bg);border-top:1px solid var(--line);padding-top:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .dock-in{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .dock strong{font-family:var(--f-display);font-weight:600;font-size:1.25rem}
+}
+@media (prefers-reduced-motion:no-preference){
+  .btn,.chip,.tabs button{transition:background-color .15s,border-color .15s}
+}
+</style>
+</head>
+<body>
+
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand"><b>Сметка</b><span>прототип</span></div>
+    <nav class="tabs" aria-label="Раздел">
+      <button type="button" id="tabMaster" aria-pressed="true">Смета</button>
+      <button type="button" id="tabPrice" aria-pressed="false">Прайс</button>
+      <button type="button" id="tabPlan" aria-pressed="false">Тариф</button>
+      <button type="button" id="tabClient" aria-pressed="false">Клиент</button>
+    </nav>
+    <span class="wide-note">Справа то, что видит клиент. Меняется сразу.</span>
+  </div>
+</header>
+
+<main class="shell">
+  <section class="panel-master" aria-label="Расчёт мастера">
+
+    <div class="m-top">
+      <div class="m-bar">
+        <button type="button" class="btn" id="newBtn">+ Новая смета</button>
+        <span class="note" id="newNote" hidden></span>
+      </div>
+      <button type="button" class="guide-cta" data-guide="home"><span class="gc-ic" aria-hidden="true">📱</span><span class="gc-tx"><b>Добавить Сметку на экран телефона</b><small>Откроется одним нажатием, как приложение</small></span><span class="gc-ar" aria-hidden="true">›</span></button>
+      <details class="drafts" id="draftsBox">
+        <summary><span>Черновики <span class="num" id="dCount"></span></span></summary>
+        <ul id="dList"></ul>
+      </details>
+    </div>
+
+    <div>
+      <h2 class="h">Объект</h2>
+      <div class="fields">
+        <label><span class="lbl">Клиент</span><input type="text" id="fClient" value="Анна Сергеевна" placeholder="Имя клиента"></label>
+        <label><span class="lbl">Адрес объекта</span><input type="text" id="fObject" value="ул. Садовая, 14, кв. 37" placeholder="Улица, дом, квартира"></label>
+        <label><span class="lbl">Ваше имя или бригада</span><input type="text" id="fMaster" value="Бригада «Ровная стена»"></label>
+      </div>
+    </div>
+
+    <div>
+      <h2 class="h"><span class="step">1</span>Комнаты</h2>
+      <p class="hint">Длина, ширина, высота и число проёмов. Стены считаются как периметр × высота минус окна (1,8 м²) и двери (1,9 м²).</p>
+      <div id="rooms"></div>
+      <button type="button" class="btn ghost" id="addRoom">+ Добавить комнату</button>
+    </div>
+
+    <div>
+      <h2 class="h"><span class="step">2</span>Работы</h2>
+      <p class="hint">Работы и цены берутся из вашего прайса. Поправите цену здесь, и она изменится только в этой смете. Крестик убирает этап, если на этом объекте его делать не будут. <button type="button" class="link-btn inline" data-goprice>Открыть мой прайс</button></p>
+      <div id="works" class="list"></div>
+      <div id="skipped" class="skipped"></div>
+    </div>
+
+    <div>
+      <h2 class="h"><span class="step">3</span>Материалы</h2>
+      <p class="hint">Расход считается по нормам из прайса и округляется до целых упаковок. Снимите галочку, если материал покупает клиент.</p>
+      <div id="mats" class="list"></div>
+    </div>
+
+    <div>
+      <h2 class="h"><span class="step">4</span>Итог</h2>
+      <div class="sum">
+        <div class="sum-row two"><span>Работы</span><b class="num" id="sWork"></b></div>
+        <div class="sum-row">
+          <label for="disc">Скидка на работы, %</label>
+          <input type="number" id="disc" class="num" min="0" max="50" step="1" inputmode="decimal" value="5">
+          <b class="num" id="sDisc"></b>
+        </div>
+        <div class="sum-row two"><span>Материалы</span><b class="num" id="sMat"></b></div>
+        <div class="sum-total"><span>Итого</span><strong class="num" id="sTotal"></strong></div>
+        <div class="sum-act">
+          <span class="pill" id="pill" data-s="draft">Черновик</span>
+        </div>
+        <div class="sum-act">
+          <button type="button" class="btn on-accent" id="sendBtn">Отправить клиенту</button>
+          <button type="button" class="btn line-accent" id="saveBtn">Сохранить в черновики</button>
+          <button type="button" class="btn line-accent" id="copyBtn">Скопировать текстом</button>
+        </div>
+        <p class="note" id="saveNote" hidden></p>
+        <p class="note" id="quotaNote">Бета-версия: смет без ограничений. <button type="button" class="link-btn inline" data-goplan>Оставить отзыв</button></p>
+        <textarea id="copyBox" class="copybox" readonly hidden aria-label="Текст сметы"></textarea>
+      </div>
+    </div>
+
+    <div>
+      <h2 class="h">События</h2>
+      <ul class="events" id="events"></ul>
+      <button type="button" class="link-btn" id="resetBtn">Сбросить демонстрацию</button>
+    </div>
+  </section>
+
+  <section class="panel-price" id="pricePanel" aria-label="Мой прайс">
+    <div>
+      <h2 class="h">Мой прайс</h2>
+      <p class="hint">Один раз вносите цены и расход материалов. Каждая новая смета берёт их отсюда, а справа сразу видно, как меняется сумма для клиента. Прайс запоминается в этом браузере. В сервисе он хранится в вашем аккаунте и открывается с любого телефона.</p>
+      <p class="price-note" id="priceNote" hidden>Смета уже отправлена клиенту. В сервисе её цены остаются прежними, а новый прайс попадает только в следующие сметы. В прототипе отправленная смета пересчитывается вместе с прайсом.</p>
+    </div>
+
+    <div>
+      <h2 class="h">Работы <span class="count num" id="wCount"></span></h2>
+      <p class="hint">Галочка включает работу в сметы. «Считать от» задаёт, от какой площади или длины берётся объём. Цены в примере условные.</p>
+      <div id="pWorks" class="list"></div>
+    </div>
+
+    <div>
+      <h2 class="h">Добавить свою работу</h2>
+      <form id="addForm" class="addbox">
+        <label><span class="lbl">Название</span><input type="text" id="aName" placeholder="Например, демонтаж обоев"></label>
+        <div class="fields">
+          <label><span class="lbl">Считать от</span><select id="aBase"></select></label>
+          <label><span class="lbl">Цена, ₽</span><input type="number" id="aPrice" min="0" step="10" inputmode="decimal" placeholder="150"></label>
+        </div>
+        <div class="row-btns"><button type="submit" class="btn primary">Добавить в прайс</button></div>
+        <p class="note" id="aNote" hidden></p>
+      </form>
+    </div>
+
+    <div>
+      <h2 class="h">Или вставьте из таблицы</h2>
+      <div class="addbox">
+        <label for="imp" class="lbl">По строке на работу: название; единица; цена</label>
+        <textarea id="imp" rows="5" placeholder="Грунтовка потолка;м²;60&#10;Монтаж короба из ГКЛ;м.п.;900"></textarea>
+        <p class="derived">Подойдут строки из Excel или Google Таблиц, разделитель табуляция или точка с запятой. Сервис сам угадывает, от чего считать работу, а вы проверяете в списке выше.</p>
+        <div class="row-btns">
+          <button type="button" class="btn" id="impBtn">Добавить из таблицы</button>
+          <button type="button" class="link-btn" id="impSample" style="margin:0">Вставить пример</button>
+        </div>
+        <p class="note" id="impNote" hidden></p>
+      </div>
+    </div>
+
+    <div>
+      <h2 class="h">Материалы</h2>
+      <p class="hint">Цена за упаковку. Нормы расхода настраиваются внутри каждой работы выше.</p>
+      <div id="pMats" class="list"></div>
+      <h3 class="h" style="margin-top:16px">Добавить свой материал</h3>
+      <form id="addMatForm" class="addbox">
+        <label><span class="lbl">Название</span><input type="text" id="mName" placeholder="Например, ротбанд 30 кг"></label>
+        <div class="fields">
+          <label><span class="lbl">Единица</span><select id="mUnit"><option>кг</option><option>л</option><option>м.п.</option><option>м²</option><option>шт</option></select></label>
+          <label><span class="lbl">В упаковке</span><input type="number" id="mSize" min="0" step="any" inputmode="decimal" placeholder="30"></label>
+          <label><span class="lbl">Цена за упаковку, ₽</span><input type="number" id="mPrice" min="0" step="10" inputmode="decimal" placeholder="640"></label>
+        </div>
+        <div class="row-btns"><button type="submit" class="btn primary">Добавить материал</button></div>
+        <p class="note" id="mNote" hidden></p>
+      </form>
+      <h3 class="h" style="margin-top:16px">Или вставьте материалы из таблицы</h3>
+      <div class="addbox">
+        <label for="impM" class="lbl">По строке на материал: название; единица; объём упаковки; цена</label>
+        <textarea id="impM" rows="5" placeholder="Ротбанд;кг;30;640&#10;Грунтовка бетонконтакт;л;10;1200"></textarea>
+        <p class="derived">Подойдут строки из Excel или Google Таблиц, разделитель табуляция или точка с запятой. Можно и так: «Ротбанд; 30 кг; 640». Единицы: кг, л, м.п., м², шт.</p>
+        <div class="row-btns">
+          <button type="button" class="btn" id="impMBtn">Добавить из таблицы</button>
+          <button type="button" class="link-btn" id="impMSample" style="margin:0">Вставить пример</button>
+        </div>
+        <p class="note" id="impMNote" hidden></p>
+      </div>
+    </div>
+
+    <div>
+      <button type="button" class="link-btn" id="resetPrice">Вернуть прайс из примера</button>
+    </div>
+  </section>
+
+  <section class="panel-plan" id="planPanel" aria-label="Тариф и анкета">
+    <div>
+      <h2 class="h">Бета-версия</h2>
+      <div class="plan-now">
+        <b>Сейчас всё бесплатно</b>
+        <p class="note">Смет без ограничений, прайс и черновики тоже. Сервис в тестировании: нам важно понять, удобен ли он и нужен ли вам. Платный тариф определим после беты.</p>
+      </div>
+    </div>
+
+    <div>
+      <h2 class="h">Что планируется после беты</h2>
+      <article class="plan pro">
+        <div class="plan-head"><h3>Про</h3><span class="tag">после беты</span></div>
+        <p class="cost num">590 ₽ <small>в месяц</small></p>
+        <ul>
+          <li>Смет без ограничений</li>
+          <li>Свой логотип на странице клиента</li>
+          <li>Шаблоны типовых смет</li>
+          <li>Приоритетная поддержка</li>
+        </ul>
+      </article>
+      <p class="hint" style="margin-top:10px">Цена и состав предварительные. Их мы и проверяем в анкете ниже.</p>
+    </div>
+
+    <div id="survey">
+      <h2 class="h">Анкета бета-тестера</h2>
+      <p class="hint">Займёт около трёх минут. Ответы собираются в текст, который вы отправляете тому, кто прислал вам ссылку на прототип.</p>
+      <form id="surveyForm" class="survey" novalidate><div class="q" role="radiogroup" aria-labelledby="q-rating"><p class="q-t" id="q-rating">Насколько удобно пользоваться сервисом? <span class="req">обязательно</span></p><div class="scale"><label class="opt sc"><input type="radio" name="rating" value="1"><span>1</span></label><label class="opt sc"><input type="radio" name="rating" value="2"><span>2</span></label><label class="opt sc"><input type="radio" name="rating" value="3"><span>3</span></label><label class="opt sc"><input type="radio" name="rating" value="4"><span>4</span></label><label class="opt sc"><input type="radio" name="rating" value="5"><span>5</span></label></div><div class="scale-legend"><span>Неудобно</span><span>Очень удобно</span></div></div><div class="q" role="radiogroup" aria-labelledby="q-need"><p class="q-t" id="q-need">Нужен ли вам такой инструмент? <span class="req">обязательно</span></p><label class="opt"><input type="radio" name="need" value="Да, пользовался бы регулярно"><span>Да, пользовался бы регулярно</span></label><label class="opt"><input type="radio" name="need" value="Возможно, пользовался бы время от времени"><span>Возможно, пользовался бы время от времени</span></label><label class="opt"><input type="radio" name="need" value="Нет, мне это не нужно"><span>Нет, мне это не нужно</span></label></div><div class="q"><label class="q-t" for="fLiked">Что понравилось?</label><textarea id="fLiked" name="liked" rows="3" placeholder="Например: быстро считает, понятная страница для клиента"></textarea></div><div class="q"><label class="q-t" for="fDisliked">Что не понравилось или чего не хватило?</label><textarea id="fDisliked" name="disliked" rows="3" placeholder="Что мешало, чего не хватило, что показалось лишним"></textarea></div><div class="q" role="group" aria-labelledby="q-feat"><p class="q-t" id="q-feat">Какие возможности нужны больше всего?</p><p class="q-h">Можно выбрать несколько.</p><label class="opt"><input type="checkbox" name="feat" value="Скачать смету в PDF"><span>Скачать смету в PDF</span></label><label class="opt"><input type="checkbox" name="feat" value="Шаблоны типовых смет"><span>Шаблоны типовых смет</span></label><label class="opt"><input type="checkbox" name="feat" value="Акты и этапы оплаты"><span>Акты и этапы оплаты</span></label><label class="opt"><input type="checkbox" name="feat" value="Свой логотип и контакты в смете"><span>Свой логотип и контакты в смете</span></label><label class="opt"><input type="checkbox" name="feat" value="Список материалов для закупки"><span>Список материалов для закупки</span></label><label class="opt"><input type="checkbox" name="feat" value="Работа без интернета"><span>Работа без интернета</span></label></div><div class="q" role="radiogroup" aria-labelledby="q-pay"><p class="q-t" id="q-pay">Готовы ли вы платить 590 ₽ в месяц за такой сервис? <span class="req">обязательно</span></p><label class="opt"><input type="radio" name="pay" value="Да, 590 ₽ в месяц подходит"><span>Да, 590 ₽ в месяц подходит</span></label><label class="opt"><input type="radio" name="pay" value="Готов платить, но меньше"><span>Готов платить, но меньше</span></label><label class="opt"><input type="radio" name="pay" value="Готов платить больше, если добавятся возможности"><span>Готов платить больше, если добавятся возможности</span></label><label class="opt"><input type="radio" name="pay" value="Платить за такой сервис не готов"><span>Платить за такой сервис не готов</span></label></div><div class="q" role="radiogroup" aria-labelledby="q-bill"><p class="q-t" id="q-bill">Как вам удобнее платить?</p><label class="opt"><input type="radio" name="billing" value="Помесячно"><span>Помесячно</span></label><label class="opt"><input type="radio" name="billing" value="Раз в год со скидкой"><span>Раз в год со скидкой</span></label><label class="opt"><input type="radio" name="billing" value="За каждую отправленную смету"><span>За каждую отправленную смету</span></label><label class="opt"><input type="radio" name="billing" value="Пока не знаю"><span>Пока не знаю</span></label></div><div class="q" role="radiogroup" aria-labelledby="q-role"><p class="q-t" id="q-role">Кто вы?</p><label class="opt"><input type="radio" name="role" value="Частный мастер или бригада (ИП)"><span>Частный мастер или бригада (ИП)</span></label><label class="opt"><input type="radio" name="role" value="Самозанятый мастер"><span>Самозанятый мастер</span></label><label class="opt"><input type="radio" name="role" value="Строительная компания (ООО)"><span>Строительная компания (ООО)</span></label><label class="opt"><input type="radio" name="role" value="Прораб или менеджер"><span>Прораб или менеджер</span></label><label class="opt"><input type="radio" name="role" value="Другое"><span>Другое</span></label></div><div class="q" role="radiogroup" aria-labelledby="q-vol"><p class="q-t" id="q-vol">Сколько смет вы делаете в месяц?</p><label class="opt"><input type="radio" name="volume" value="1–2 в месяц"><span>1–2 в месяц</span></label><label class="opt"><input type="radio" name="volume" value="3–10 в месяц"><span>3–10 в месяц</span></label><label class="opt"><input type="radio" name="volume" value="Больше 10 в месяц"><span>Больше 10 в месяц</span></label><label class="opt"><input type="radio" name="volume" value="Пока не считаю сметы"><span>Пока не считаю сметы</span></label></div><div class="q" role="group" aria-labelledby="q-how"><p class="q-t" id="q-how">Как считаете сметы сейчас?</p><p class="q-h">Можно выбрать несколько.</p><label class="opt"><input type="checkbox" name="how" value="Таблицы Excel или Google"><span>Таблицы Excel или Google</span></label><label class="opt"><input type="checkbox" name="how" value="Бумага или в голове"><span>Бумага или в голове</span></label><label class="opt"><input type="checkbox" name="how" value="Сообщение в мессенджере"><span>Сообщение в мессенджере</span></label><label class="opt"><input type="checkbox" name="how" value="Другой сервис или приложение"><span>Другой сервис или приложение</span></label><label class="opt"><input type="checkbox" name="how" value="Письменно не считаю"><span>Письменно не считаю</span></label></div><div class="q" role="group" aria-labelledby="q-contact"><p class="q-t" id="q-contact">Хотите, чтобы с вами связались?</p><p class="q-h">Необязательно. Без контакта анкета остаётся анонимной.</p><input type="text" id="fCname" name="cname" placeholder="Имя" autocomplete="name" aria-label="Имя"><input type="text" id="fCcontact" name="ccontact" placeholder="Telegram или телефон" autocomplete="off" aria-label="Telegram или телефон"><label class="check cons" for="fConsent"><input type="checkbox" id="fConsent" name="cconsent"><span>Даю <button type="button" class="link-btn inline" data-doc="consent">согласие на обработку персональных данных</button>, чтобы со мной связались по поводу отзыва</span></label></div><p class="q-err" id="surveyErr" role="alert" hidden></p><button type="submit" class="btn primary">Готово, собрать ответы</button></form>
+      <div class="survey-done" id="surveyDone" hidden>
+        <h3>Спасибо за отзыв</h3>
+        <p>Ответы собраны в текст ниже. Скопируйте его и отправьте тому, кто прислал вам ссылку, например сообщением в мессенджере.</p>
+        <textarea id="surveyOut" class="copybox" rows="12" readonly aria-label="Текст ваших ответов"></textarea>
+        <div class="row-btns"><button type="button" class="btn primary" id="surveyCopy">Скопировать ответы</button><button type="button" class="btn" id="surveyEdit">Изменить ответы</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel-client" id="clientPanel" aria-label="Что видит клиент">
+    <p class="c-label"><span class="pill" data-s="sent">Так видит клиент</span><span>по ссылке, без регистрации</span></p>
+    <article class="paper">
+      <p class="c-draft" id="cDraft">Черновик. Клиент увидит смету после того, как вы нажмёте «Отправить клиенту».</p>
+      <div id="cDoc" style="display:flex;flex-direction:column;gap:18px"></div>
+      <div class="c-actions">
+        <p class="c-banner" id="cBanner" hidden></p>
+        <div class="c-btns">
+          <button type="button" class="btn primary" id="approveBtn">Согласовать смету</button>
+          <button type="button" class="btn" id="askBtn">Задать вопрос</button>
+        </div>
+        <form id="askForm" hidden>
+          <label for="askText" class="lbl">Ваш вопрос мастеру</label>
+          <textarea id="askText" rows="3" placeholder="Например: можно ли покупать материалы самому?"></textarea>
+          <label class="check cons" for="askConsent"><input type="checkbox" id="askConsent"><span>Даю <button type="button" class="link-btn inline" data-doc="consent">согласие на обработку персональных данных</button>, чтобы мастер ответил на вопрос</span></label>
+          <button type="submit" class="btn primary">Отправить вопрос</button>
+        </form>
+        <p class="note" id="cNote" hidden></p>
+      </div>
+    </article>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>Сметка · прототип</span>
+  <button type="button" class="link-btn" data-guide="home">Иконка на экран телефона</button>
+  <button type="button" class="link-btn" data-doc="policy">Политика конфиденциальности</button>
+  <button type="button" class="link-btn" data-doc="consent">Согласие на обработку персональных данных</button>
+  <button type="button" class="link-btn" data-doc="offer">Публичная оферта</button>
+</footer>
+
+<div class="dock">
+  <div class="dock-in">
+    <div><span class="lbl" style="margin:0">Итого</span><strong class="num" id="dockTotal"></strong></div>
+    <button type="button" class="btn primary" id="dockView">Как увидит клиент</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle" tabindex="-1">
+    <div class="sheet-head"><h2 id="sheetTitle"></h2><button type="button" class="icon-btn" id="sheetClose" aria-label="Закрыть">×</button></div>
+    <div id="sheetBody"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var $ = function(s, r){ return (r || document).querySelector(s); };
+  var $$ = function(s, r){ return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var nf = function(n, d){ d = d || 0; return new Intl.NumberFormat('ru-RU', {minimumFractionDigits: d, maximumFractionDigits: d}).format(n); };
+  var rub = function(n){ return nf(Math.round(n)) + ' ₽'; };
+  var esc = function(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
+  var num = function(v){ var x = parseFloat(v); return isFinite(x) && x > 0 ? x : 0; };
+  var hhmm = function(d){ return d.toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'}); };
+  var qtyStr = function(q, u){ return nf(q, u === 'шт' ? 0 : 1) + ' ' + u; };
+  var nameOf = function(r){ return r.name && r.name.trim() ? r.name.trim() : 'Без названия'; };
+
+  var OPEN_WIN = 1.8, OPEN_DOOR = 1.9, DOOR_W = 0.9;
+  var LS = 'smetka-price-v1';
+
+  var BASES = {
+    wall:  {unit: 'м²',   label: '₽ за м² стен',        per: 'м² стен',        opt: 'Стены, м²'},
+    ceil:  {unit: 'м²',   label: '₽ за м² потолка',     per: 'м² потолка',     opt: 'Потолок, м²'},
+    floor: {unit: 'м²',   label: '₽ за м² пола',        per: 'м² пола',        opt: 'Пол, м²'},
+    win:   {unit: 'шт',   label: '₽ за окно',           per: 'окно',           opt: 'Окна, шт'},
+    perim: {unit: 'м.п.', label: '₽ за метр периметра', per: 'метр периметра', opt: 'Периметр без дверей, м.п.'},
+    room:  {unit: 'шт',   label: '₽ за комнату',        per: 'комнату',        opt: 'За комнату, шт'}
+  };
+  var BASE_ORDER = ['wall', 'ceil', 'floor', 'win', 'perim', 'room'];
+
+  function makeMats(){
+    return {
+      gips:  {name: 'Гипсовая штукатурка',               size: 30,  unit: 'кг',   pack: 'мешок 30 кг',   word: 'меш.', price: 640,  on: true, over: null},
+      grunt: {name: 'Грунтовка глубокого проникновения', size: 10,  unit: 'л',    pack: 'канистра 10 л', word: 'кан.', price: 780,  on: true, over: null},
+      fin:   {name: 'Шпаклёвка финишная',                size: 25,  unit: 'кг',   pack: 'мешок 25 кг',   word: 'меш.', price: 720,  on: true, over: null},
+      paint: {name: 'Краска водно-дисперсионная',        size: 9,   unit: 'л',    pack: 'ведро 9 л',     word: 'вед.', price: 3400, on: true, over: null},
+      plint: {name: 'Плинтус',                           size: 2.5, unit: 'м.п.', pack: 'планка 2,5 м',  word: 'шт.',  price: 190,  on: true, over: null}
+    };
+  }
+  function makeWorks(){
+    return [
+      {id: 'plaster', name: 'Штукатурка стен по маякам',    base: 'wall',  price: 650,  active: true, rooms: [1, 2, 3], norms: {gips: 9, grunt: 0.2},               over: null},
+      {id: 'putty',   name: 'Шпаклёвка стен под покраску',  base: 'wall',  price: 380,  active: true, rooms: [1, 2],    norms: {fin: 1.3, grunt: 0.15},             over: null},
+      {id: 'paint',   name: 'Покраска стен в 2 слоя',       base: 'wall',  price: 220,  active: true, rooms: [1, 2],    norms: {paint: 0.25},                       over: null},
+      {id: 'ceil',    name: 'Шпаклёвка и покраска потолка', base: 'ceil',  price: 520,  active: true, rooms: [2],       norms: {fin: 1.3, grunt: 0.15, paint: 0.25}, over: null},
+      {id: 'slopes',  name: 'Откосы окон, штукатурка',      base: 'win',   price: 1800, active: true, rooms: [1, 2],    norms: {gips: 12},                          over: null},
+      {id: 'plinth',  name: 'Монтаж плинтуса',              base: 'perim', price: 180,  active: true, rooms: [1, 2],    norms: {plint: 1.05},                       over: null}
+    ];
+  }
+  var mats = makeMats();
+  var works = makeWorks();
+  var cid = 1, mid = 1;
+  function newMat(name, unit, size, price){
+    var id = 'x' + (mid++);
+    mats[id] = {name: name, size: size, unit: unit, pack: 'упаковка ' + nf(size, size % 1 ? 1 : 0) + ' ' + unit, word: 'уп.', price: price, on: true, over: null, custom: true};
+    return id;
+  }
+
+  var state = {
+    rooms: [
+      {id: 1, name: 'Кухня',   l: 3.2, w: 4.1, h: 2.7, win: 1, door: 1},
+      {id: 2, name: 'Комната', l: 3.5, w: 5,   h: 2.7, win: 2, door: 1},
+      {id: 3, name: 'Санузел', l: 1.7, w: 2.1, h: 2.5, win: 0, door: 1}
+    ],
+    discount: 5,
+    status: 'draft',
+    opened: false,
+    approved: false,
+    approvedAt: null,
+    events: []
+  };
+  var uid = 4;
+
+  /* ---------- price list: effective values, storage ---------- */
+  function wp(w){ return w.over !== null ? w.over : w.price; }
+  function mpr(m){ return m.over !== null ? m.over : m.price; }
+  function wById(id){ return works.filter(function(w){ return w.id === id; })[0]; }
+  function cleanNorms(n){
+    var out = {};
+    Object.keys(n || {}).forEach(function(k){ if(mats[k] && num(n[k]) > 0) out[k] = num(n[k]); });
+    return out;
+  }
+  function save(){
+    try {
+      var d = {
+        works: works.map(function(w){ return {id: w.id, name: w.name, base: w.base, price: w.price, active: w.active, norms: w.norms, custom: !!w.custom}; }),
+        mats: {}
+      };
+      d.cmats = [];
+      Object.keys(mats).forEach(function(id){
+        d.mats[id] = mats[id].price;
+        if(mats[id].custom) d.cmats.push({id: id, name: mats[id].name, unit: mats[id].unit, size: mats[id].size});
+      });
+      localStorage.setItem(LS, JSON.stringify(d));
+    } catch(e){}
+  }
+  function load(){
+    try {
+      var raw = localStorage.getItem(LS);
+      if(!raw) return;
+      var d = JSON.parse(raw);
+      (d.cmats || []).forEach(function(s){
+        if(!/^x\d+$/.test(String(s.id)) || !num(s.size)) return;
+        var id = newMat(String(s.name || 'Материал'), String(s.unit || 'шт'), num(s.size), 0);
+        if(id !== s.id){ mats[s.id] = mats[id]; delete mats[id]; }
+        var n = parseInt(String(s.id).slice(1), 10);
+        if(n >= mid) mid = n + 1;
+      });
+      (d.works || []).forEach(function(s){
+        var w = wById(s.id);
+        if(!w){
+          if(!s.custom) return;
+          w = {id: String(s.id), name: String(s.name || 'Работа'), base: 'wall', price: 0, active: true, custom: true, rooms: [], norms: {}, over: null};
+          works.push(w);
+          var n = parseInt(String(s.id).slice(1), 10);
+          if(n >= cid) cid = n + 1;
+        }
+        w.price = num(s.price);
+        w.active = s.active !== false;
+        if(BASES[s.base]) w.base = s.base;
+        w.norms = cleanNorms(s.norms);
+      });
+      Object.keys(d.mats || {}).forEach(function(id){ if(mats[id]) mats[id].price = num(d.mats[id]); });
+    } catch(e){}
+  }
+  function addWork(name, base, price){
+    var w = {id: 'c' + (cid++), name: name, base: base, price: price, active: true, custom: true, rooms: [], norms: {}, over: null};
+    works.push(w);
+    return w;
+  }
+  function guessBase(name, unit){
+    var n = String(name).toLowerCase();
+    var u = String(unit).toLowerCase().replace(/[\s.]/g, '');
+    if(/потол/.test(n)) return 'ceil';
+    if(/(^|\s)пол(а|ы|у|ов|е)?(\s|$)/.test(n)) return 'floor';
+    if(/окн|откос/.test(n)) return 'win';
+    if(/^(мп|пм|м|погм|погонныйметр)$/.test(u) || /плинтус/.test(n)) return 'perim';
+    if(/^(шт|компл|комн)/.test(u)) return 'room';
+    return 'wall';
+  }
+  function parsePaste(text){
+    var rows = [], skipped = 0;
+    String(text).split(/\r?\n/).forEach(function(line){
+      line = line.trim();
+      if(!line) return;
+      var p = line.split(/\t|;/).map(function(s){ return s.trim(); });
+      if(p.length < 3){ skipped++; return; }
+      var price = parseFloat(p[p.length - 1].replace(/[^\d.,]/g, '').replace(',', '.'));
+      if(!p[0] || !isFinite(price) || price <= 0){ skipped++; return; }
+      rows.push({name: p[0], unit: p[1], price: price});
+    });
+    return {rows: rows, skipped: skipped};
+  }
+
+  /* ---------- calculation ---------- */
+  function roomCalc(r){
+    var perim = 2 * (r.l + r.w);
+    var wall = Math.max(0, perim * r.h - r.win * OPEN_WIN - r.door * OPEN_DOOR);
+    var floor = r.l * r.w;
+    return {perim: perim, wall: wall, floor: floor, ceil: floor, win: r.win, plinth: Math.max(0, perim - DOOR_W * r.door), room: 1};
+  }
+  function baseQty(k, base){ return base === 'perim' ? k.plinth : k[base]; }
+
+  function calc(){
+    var rc = {};
+    state.rooms.forEach(function(r){ rc[r.id] = roomCalc(r); });
+    var perRoom = {};
+    state.rooms.forEach(function(r){ perRoom[r.id] = {sum: 0, items: []}; });
+    var lines = [], workTotal = 0, need = {};
+    works.forEach(function(w){
+      if(!w.active || w.skip) return;
+      var price = wp(w), qty = 0;
+      state.rooms.forEach(function(r){
+        if(w.rooms.indexOf(r.id) < 0) return;
+        var q = baseQty(rc[r.id], w.base);
+        var s = q * price;
+        qty += q;
+        perRoom[r.id].sum += s;
+        perRoom[r.id].items.push({name: w.name, qty: q, unit: BASES[w.base].unit, price: price, sum: s});
+      });
+      var sum = qty * price;
+      workTotal += sum;
+      lines.push({w: w, qty: qty, sum: sum});
+      if(qty > 0){
+        Object.keys(w.norms).forEach(function(id){ need[id] = (need[id] || 0) + qty * w.norms[id]; });
+      }
+    });
+    var matLines = [], matTotal = 0;
+    Object.keys(mats).forEach(function(id){
+      var m = mats[id];
+      var n = need[id] || 0;
+      var packs = Math.ceil(n / m.size - 1e-9);
+      var price = mpr(m);
+      var sum = m.on ? packs * price : 0;
+      matTotal += sum;
+      matLines.push({id: id, m: m, need: n, packs: packs, price: price, sum: sum});
+    });
+    var disc = workTotal * state.discount / 100;
+    return {rc: rc, perRoom: perRoom, lines: lines, workTotal: workTotal, matLines: matLines, matTotal: matTotal, disc: disc, total: workTotal - disc + matTotal};
+  }
+
+  /* ---------- structure renders ---------- */
+  function fld(r, f, label, step){
+    return '<label class="fld" for="r' + r.id + '-' + f + '"><span class="lbl">' + label + '</span>' +
+      '<input class="num" id="r' + r.id + '-' + f + '" type="number" inputmode="decimal" min="0" step="' + step + '" data-f="' + f + '" value="' + r[f] + '"></label>';
+  }
+  function renderRooms(){
+    var el = $('#rooms');
+    if(!state.rooms.length){
+      el.innerHTML = '<p class="hint">Комнат пока нет. Добавьте первую, и смета начнёт считаться.</p>';
+      return;
+    }
+    el.innerHTML = state.rooms.map(function(r){
+      return '<article class="room" data-id="' + r.id + '">' +
+        '<div class="room-head"><input type="text" class="name" id="r' + r.id + '-name" data-f="name" value="' + esc(r.name) + '" aria-label="Название комнаты">' +
+        '<button type="button" class="icon-btn" data-del="' + r.id + '" aria-label="Удалить комнату ' + esc(nameOf(r)) + '">×</button></div>' +
+        '<div class="dims">' + fld(r, 'l', 'Длина, м', '0.1') + fld(r, 'w', 'Ширина, м', '0.1') + fld(r, 'h', 'Высота, м', '0.05') + '</div>' +
+        '<div class="open">' + fld(r, 'win', 'Окон', '1') + fld(r, 'door', 'Дверей', '1') + '</div>' +
+        '<p class="derived num" id="rd-' + r.id + '"></p></article>';
+    }).join('');
+  }
+  function renderWorks(){
+    var list = works.filter(function(w){ return w.active && !w.skip; });
+    var gone = works.filter(function(w){ return w.active && w.skip; });
+    $('#skipped').innerHTML = gone.length
+      ? '<span class="lbl">Не делаем на этом объекте</span><div class="chips">' + gone.map(function(w){
+          return '<button type="button" class="chip" data-unskip="' + w.id + '" aria-label="Вернуть в смету: ' + esc(w.name) + '">+ ' + esc(w.name) + '</button>';
+        }).join('') + '</div>'
+      : '';
+    var el = $('#works');
+    if(!list.length){
+      el.innerHTML = '<div class="work"><p class="hint" style="margin:0">' + (gone.length ? 'Все этапы убраны из этой сметы. Верните нужные кнопками ниже.' : 'В прайсе нет включённых работ. Откройте «Прайс» и включите нужные.') + '</p></div>';
+      return;
+    }
+    el.innerHTML = list.map(function(w){
+      return '<article class="work" data-w="' + w.id + '">' +
+        '<div class="work-top"><h3>' + esc(w.name) + '</h3>' +
+        '<label class="price" for="wp-' + w.id + '"><input type="number" class="num" id="wp-' + w.id + '" inputmode="decimal" min="0" step="10" data-price value="' + wp(w) + '"><span>' + BASES[w.base].label + '</span></label>' +
+        '<button type="button" class="icon-btn" data-skip title="Не делаем на этом объекте" aria-label="Не делаем на этом объекте: ' + esc(w.name) + '">×</button></div>' +
+        '<p class="ovr" id="wo-' + w.id + '" hidden></p>' +
+        '<div class="chips" role="group" aria-label="Где делаем: ' + esc(w.name) + '">' +
+        state.rooms.map(function(r){
+          return '<button type="button" class="chip" data-room="' + r.id + '" aria-pressed="' + (w.rooms.indexOf(r.id) >= 0) + '">' + esc(nameOf(r)) + '</button>';
+        }).join('') + '</div>' +
+        '<p class="derived num" id="wd-' + w.id + '"></p></article>';
+    }).join('');
+  }
+  function renderMats(){
+    $('#mats').innerHTML = Object.keys(mats).map(function(id){
+      var m = mats[id];
+      return '<div class="mat" data-m="' + id + '">' +
+        '<label class="check" for="mc-' + id + '"><input type="checkbox" id="mc-' + id + '" data-on' + (m.on ? ' checked' : '') + '><span>' + m.name + '</span></label>' +
+        '<label class="price" for="mp-' + id + '"><input type="number" class="num" id="mp-' + id + '" inputmode="decimal" min="0" step="10" data-mprice value="' + mpr(m) + '"><span>₽ за ' + m.pack + '</span></label>' +
+        '<p class="ovr" id="mo-' + id + '" hidden></p>' +
+        '<p class="derived num" data-md></p></div>';
+    }).join('');
+  }
+
+  /* price panel */
+  function baseOptions(sel){
+    return BASE_ORDER.map(function(b){ return '<option value="' + b + '"' + (b === sel ? ' selected' : '') + '>' + BASES[b].opt + '</option>'; }).join('');
+  }
+  function renderPriceWorks(){
+    var el = $('#pWorks');
+    $('#wCount').textContent = works.filter(function(w){ return w.active; }).length + ' из ' + works.length + ' включено';
+    if(!works.length){
+      el.innerHTML = '<div class="pw"><p class="hint" style="margin:0">Прайс пуст. Добавьте работу ниже или вставьте строки из таблицы.</p></div>';
+      return;
+    }
+    el.innerHTML = works.map(function(w){
+      var b = BASES[w.base];
+      return '<article class="pw' + (w.active ? '' : ' off') + '" data-w="' + w.id + '">' +
+        '<div class="pw-top"><label class="check" for="pa-' + w.id + '"><input type="checkbox" id="pa-' + w.id + '" data-active' + (w.active ? ' checked' : '') + '><span class="pw-name">' + esc(w.name) + '</span></label>' +
+        '<label class="price" for="pp-' + w.id + '"><input type="number" class="num" id="pp-' + w.id + '" inputmode="decimal" min="0" step="10" data-pprice value="' + w.price + '"><span>' + b.label + '</span></label></div>' +
+        (w.custom ? '<label class="inl wname">Название <input type="text" data-wname value="' + esc(w.name) + '"></label>' : '') + '<div class="pw-row2"><label class="inl" for="pb-' + w.id + '">Считать от <select id="pb-' + w.id + '" data-base>' + baseOptions(w.base) + '</select></label>' +
+        (w.custom ? '<span class="row-btns"><span class="tag">своя</span><button type="button" class="link-btn" style="margin:0" data-delw>Удалить</button></span>' : '') + '</div>' +
+        '<details class="norms"><summary>Расход материалов на 1 ' + b.per + '</summary><div class="norm-grid">' +
+        Object.keys(mats).map(function(id){
+          var m = mats[id];
+          return '<label class="norm" for="n-' + w.id + '-' + id + '"><span>' + m.name + '</span>' +
+            '<span class="nin"><input type="number" class="num" id="n-' + w.id + '-' + id + '" data-norm="' + id + '" min="0" step="0.05" inputmode="decimal" value="' + (w.norms[id] || 0) + '"><span>' + m.unit + '</span></span></label>';
+        }).join('') + '</div></details>' +
+        '<p class="derived num" id="pd-' + w.id + '"></p></article>';
+    }).join('');
+  }
+  function renderPriceMats(){
+    $('#pMats').innerHTML = Object.keys(mats).map(function(id){
+      var m = mats[id];
+      return '<div class="pm" data-m="' + id + '"><div class="pm-name">' + (m.custom ? '<input type="text" class="pm-edit" data-mname value="' + esc(m.name) + '" aria-label="Название материала">' : '<b>' + esc(m.name) + '</b>') + '<span class="derived">Упаковка: ' + m.pack + '</span>' + (m.custom ? '<span class="mrow"><label>Единица <select data-munit>' + ['кг', 'л', 'м.п.', 'м²', 'шт'].map(function(u){ return '<option' + (u === m.unit ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></label><label>В упаковке <input type="number" class="num" data-msize min="0" step="any" inputmode="decimal" value="' + m.size + '"></label></span>' : '') + (m.custom ? '<span class="row-btns"><span class="tag">свой</span><button type="button" class="link-btn" style="margin:0" data-delm>Удалить</button></span>' : '') + '</div>' +
+        '<label class="price" for="pm-' + id + '"><input type="number" class="num" id="pm-' + id + '" inputmode="decimal" min="0" step="10" data-pmprice value="' + m.price + '"><span>₽ за упаковку</span></label></div>';
+    }).join('');
+  }
+
+  /* ---------- live updates ---------- */
+  function recalc(){
+    var c = calc();
+    state.rooms.forEach(function(r){
+      var k = c.rc[r.id], el = $('#rd-' + r.id);
+      if(el) el.textContent = 'Пол ' + nf(k.floor, 1) + ' м² · стены ' + nf(k.wall, 1) + ' м² · периметр ' + nf(k.perim, 1) + ' м';
+    });
+    $$('.chip').forEach(function(ch){
+      var r = state.rooms.filter(function(x){ return String(x.id) === ch.dataset.room; })[0];
+      if(r && ch.textContent !== nameOf(r)) ch.textContent = nameOf(r);
+    });
+    var lineById = {};
+    c.lines.forEach(function(l){
+      lineById[l.w.id] = l;
+      var w = l.w;
+      var d = $('#wd-' + w.id);
+      if(d) d.textContent = l.qty > 0 ? qtyStr(l.qty, BASES[w.base].unit) + ' × ' + rub(wp(w)) + ' = ' + rub(l.sum) : 'Комната не выбрана';
+      var inp = $('#wp-' + w.id);
+      if(inp && document.activeElement !== inp) inp.value = wp(w);
+      var ov = $('#wo-' + w.id);
+      if(ov){
+        if(w.over !== null){
+          ov.hidden = false;
+          ov.innerHTML = 'Цена изменена в этой смете. В прайсе ' + rub(w.price) + '. <button type="button" class="link-btn inline" data-reset>Вернуть из прайса</button>';
+        } else { ov.hidden = true; }
+      }
+    });
+    works.forEach(function(w){
+      var pd = $('#pd-' + w.id);
+      if(!pd) return;
+      var l = lineById[w.id];
+      if(!w.active) pd.textContent = 'Выключена, в сметах не показывается';
+      else if(w.skip) pd.textContent = 'Убрана из этой сметы крестиком';
+      else if(l && l.qty > 0) pd.textContent = 'В этой смете: ' + qtyStr(l.qty, BASES[w.base].unit) + ' × ' + rub(wp(w)) + ' = ' + rub(l.sum) + (w.over !== null ? ' · цена в смете изменена вручную' : '');
+      else pd.textContent = 'В этой смете не используется, не выбрана ни одна комната';
+    });
+    c.matLines.forEach(function(l){
+      var row = $('[data-m="' + l.id + '"]', $('#mats'));
+      if(row){
+        row.hidden = l.need <= 0.0001;
+        var d = $('[data-md]', row);
+        if(d) d.textContent = l.m.on
+          ? 'Нужно ' + nf(l.need, l.m.unit === 'м.п.' ? 1 : 0) + ' ' + l.m.unit + ' · ' + l.packs + ' ' + l.m.word + ' × ' + rub(l.price) + ' = ' + rub(l.sum)
+          : 'Не входит в смету, материал покупает клиент';
+      }
+      var inp = $('#mp-' + l.id);
+      if(inp && document.activeElement !== inp) inp.value = l.price;
+      var ov = $('#mo-' + l.id);
+      if(ov){
+        if(l.m.over !== null){
+          ov.hidden = false;
+          ov.innerHTML = 'Цена изменена в этой смете. В прайсе ' + rub(l.m.price) + '. <button type="button" class="link-btn inline" data-reset>Вернуть из прайса</button>';
+        } else { ov.hidden = true; }
+      }
+    });
+    $('#sWork').textContent = rub(c.workTotal);
+    $('#sDisc').textContent = c.disc > 0 ? '−' + rub(c.disc) : rub(0);
+    $('#sMat').textContent = rub(c.matTotal);
+    $('#sTotal').textContent = rub(c.total);
+    $('#dockTotal').textContent = rub(c.total);
+    renderClient(c);
+    return c;
+  }
+
+  function renderClient(c){
+    var date = new Date().toLocaleDateString('ru-RU', {day: 'numeric', month: 'long', year: 'numeric'});
+    var rooms = state.rooms.filter(function(r){ return c.perRoom[r.id].items.length; });
+    var first = true;
+    var roomsHtml = rooms.map(function(r){
+      var p = c.perRoom[r.id];
+      var html = '<details class="c-room"' + (first ? ' open' : '') + '><summary><span>' + esc(nameOf(r)) + '</span><b class="num">' + rub(p.sum) + '</b></summary><ul>' +
+        p.items.map(function(i){
+          return '<li><span class="nm">' + esc(i.name) + '</span><span class="calc num">' + qtyStr(i.qty, i.unit) + ' × ' + rub(i.price) + '</span><b class="num">' + rub(i.sum) + '</b></li>';
+        }).join('') + '</ul></details>';
+      first = false;
+      return html;
+    }).join('');
+    var matRows = c.matLines.filter(function(l){ return l.m.on && l.packs > 0; });
+    var matsHtml = matRows.length
+      ? '<ul class="c-mat">' + matRows.map(function(l){
+          return '<li><span class="nm">' + l.m.name + '</span><span class="calc num">' + l.packs + ' ' + l.m.word + ' × ' + rub(l.price) + '</span><b class="num">' + rub(l.sum) + '</b></li>';
+        }).join('') + '</ul>'
+      : '<p class="note">Материалы в смету не входят.</p>';
+    var empty = !rooms.length;
+    $('#cDoc').innerHTML =
+      '<header class="c-head"><p class="c-from">' + esc(state.masterName) + '</p>' +
+      '<h2>Смета на отделку</h2>' +
+      '<p class="c-meta">' + esc(state.object || 'Адрес не указан') + ' · для ' + esc(state.client || 'клиента без имени') + ' · от ' + date + ' · действует 14 дней</p></header>' +
+      '<div class="c-total"><span>Итого к оплате</span><strong class="num">' + rub(c.total) + '</strong>' +
+      '<small class="num">работа ' + rub(c.workTotal - c.disc) + ' · материалы ' + rub(c.matTotal) + '</small></div>' +
+      (empty ? '<p class="note">В смету пока не добавлены работы.</p>' :
+        '<section class="c-sec"><h3>Работы по комнатам</h3>' + roomsHtml + '</section>') +
+      '<section class="c-sec"><h3>Материалы</h3>' + matsHtml + '</section>' +
+      '<section class="c-lines num"><div><span>Работы</span><span>' + rub(c.workTotal) + '</span></div>' +
+      (c.disc > 0 ? '<div><span>Скидка ' + nf(state.discount, 0) + '%</span><span>−' + rub(c.disc) + '</span></div>' : '') +
+      '<div><span>Материалы</span><span>' + rub(c.matTotal) + '</span></div>' +
+      '<div class="grand"><span>Итого</span><span>' + rub(c.total) + '</span></div></section>' +
+      '<p class="c-legal">Как обрабатываются ваши данные из этой сметы: <button type="button" class="link-btn inline" data-doc="policy">политика конфиденциальности</button>.</p>';
+  }
+
+  /* ---------- status, events, client actions ---------- */
+  function log(text, kind){ state.events.push({t: new Date(), text: text, kind: kind || 'info'}); }
+  function pillState(){ return state.approved ? 'approved' : state.opened ? 'opened' : state.status; }
+  var PILL = {draft: 'Черновик', sent: 'Отправлена', opened: 'Клиент открыл', approved: 'Согласована'};
+  function refresh(){
+    var s = pillState();
+    var pill = $('#pill'); pill.dataset.s = s; pill.textContent = PILL[s];
+    var send = $('#sendBtn');
+    send.textContent = state.status === 'draft' ? 'Отправить клиенту' : 'Отправлена клиенту';
+    send.disabled = state.status !== 'draft';
+    $('#saveBtn').disabled = state.status !== 'draft';
+    var draft = state.status === 'draft';
+    $('#cDraft').hidden = !draft;
+    $('#priceNote').hidden = draft;
+    var ap = $('#approveBtn');
+    ap.disabled = draft || state.approved;
+    ap.textContent = state.approved ? 'Согласовано' : 'Согласовать смету';
+    $('#askBtn').disabled = draft;
+    var banner = $('#cBanner');
+    banner.hidden = !state.approved;
+    if(state.approved) banner.textContent = 'Смета согласована в ' + hhmm(state.approvedAt) + '. Мастер получил уведомление.';
+    if(draft){ $('#askForm').hidden = true; $('#cNote').hidden = true; }
+    var ev = $('#events');
+    if(!state.events.length){
+      ev.innerHTML = '<li class="ev empty">Здесь появятся отметки: отправлена, открыта, согласована, вопрос. Нажмите «Отправить клиенту», затем посмотрите смету глазами клиента.</li>';
+    } else {
+      ev.innerHTML = state.events.slice().reverse().map(function(e){
+        return '<li class="ev ' + e.kind + '"><time class="num">' + hhmm(e.t) + '</time><span>' + esc(e.text) + '</span></li>';
+      }).join('');
+    }
+  }
+  function markOpened(){
+    if(state.status === 'sent' && !state.opened){
+      state.opened = true;
+      log('Клиент открыл смету. Самое время позвонить.', 'open');
+      refresh();
+    }
+  }
+
+  /* ---------- text export ---------- */
+  function buildText(c){
+    var out = ['Смета на отделку', state.object || 'Адрес не указан', 'Для: ' + (state.client || 'клиента без имени'), 'Исполнитель: ' + state.masterName, ''];
+    c.lines.forEach(function(l){
+      if(l.qty > 0) out.push(l.w.name + ': ' + qtyStr(l.qty, BASES[l.w.base].unit) + ' × ' + rub(wp(l.w)) + ' = ' + rub(l.sum));
+    });
+    out.push('');
+    c.matLines.forEach(function(l){
+      if(l.m.on && l.packs > 0) out.push(l.m.name + ': ' + l.packs + ' ' + l.m.word + ' × ' + rub(l.price) + ' = ' + rub(l.sum));
+    });
+    out.push('');
+    out.push('Работы: ' + rub(c.workTotal));
+    if(c.disc > 0) out.push('Скидка ' + nf(state.discount, 0) + '%: −' + rub(c.disc));
+    out.push('Материалы: ' + rub(c.matTotal));
+    out.push('Итого: ' + rub(c.total));
+    return out.join('\n');
+  }
+
+  function fullRender(){ renderPriceWorks(); renderPriceMats(); renderWorks(); renderMats(); recalc(); }
+
+  /* ---------- estimate wiring ---------- */
+  $('#rooms').addEventListener('input', function(e){
+    var t = e.target, f = t.dataset.f;
+    if(!f) return;
+    var id = t.closest('.room').dataset.id;
+    var r = state.rooms.filter(function(x){ return String(x.id) === id; })[0];
+    if(!r) return;
+    r[f] = f === 'name' ? t.value : num(t.value);
+    recalc();
+  });
+  $('#rooms').addEventListener('click', function(e){
+    var b = e.target.closest('[data-del]');
+    if(!b) return;
+    var id = Number(b.dataset.del);
+    state.rooms = state.rooms.filter(function(r){ return r.id !== id; });
+    works.forEach(function(w){ w.rooms = w.rooms.filter(function(x){ return x !== id; }); });
+    renderRooms(); renderWorks(); recalc();
+  });
+  $('#addRoom').addEventListener('click', function(){
+    var r = {id: uid++, name: 'Комната ' + (state.rooms.length + 1), l: 3, w: 4, h: 2.7, win: 1, door: 1};
+    state.rooms.push(r);
+    ['plaster', 'putty', 'paint'].forEach(function(id){
+      var w = wById(id); if(w) w.rooms.push(r.id);
+    });
+    renderRooms(); renderWorks(); recalc();
+    var inp = $('#r' + r.id + '-name'); if(inp){ inp.focus(); inp.select(); }
+  });
+  $('#works').addEventListener('input', function(e){
+    if(!e.target.hasAttribute('data-price')) return;
+    var w = wById(e.target.closest('.work').dataset.w);
+    var v = num(e.target.value);
+    w.over = v === w.price ? null : v;
+    recalc();
+  });
+  $('#works').addEventListener('click', function(e){
+    var sk = e.target.closest('[data-skip]');
+    if(sk){
+      wById(sk.closest('.work').dataset.w).skip = true;
+      renderWorks(); recalc();
+      return;
+    }
+    var rs = e.target.closest('[data-reset]');
+    if(rs){
+      wById(rs.closest('.work').dataset.w).over = null;
+      recalc();
+      return;
+    }
+    var ch = e.target.closest('.chip');
+    if(!ch) return;
+    var w = wById(ch.closest('.work').dataset.w);
+    var id = Number(ch.dataset.room), i = w.rooms.indexOf(id);
+    if(i >= 0) w.rooms.splice(i, 1); else w.rooms.push(id);
+    ch.setAttribute('aria-pressed', String(i < 0));
+    recalc();
+  });
+  $('#skipped').addEventListener('click', function(e){
+    var b = e.target.closest('[data-unskip]');
+    if(!b) return;
+    wById(b.dataset.unskip).skip = false;
+    renderWorks(); recalc();
+  });
+  $('#mats').addEventListener('input', function(e){
+    if(!e.target.hasAttribute('data-mprice')) return;
+    var m = mats[e.target.closest('.mat').dataset.m];
+    var v = num(e.target.value);
+    m.over = v === m.price ? null : v;
+    recalc();
+  });
+  $('#mats').addEventListener('click', function(e){
+    var rs = e.target.closest('[data-reset]');
+    if(!rs) return;
+    mats[rs.closest('.mat').dataset.m].over = null;
+    recalc();
+  });
+  $('#mats').addEventListener('change', function(e){
+    if(!e.target.hasAttribute('data-on')) return;
+    mats[e.target.closest('.mat').dataset.m].on = e.target.checked;
+    recalc();
+  });
+  $('#disc').addEventListener('input', function(e){
+    state.discount = Math.min(50, num(e.target.value));
+    recalc();
+  });
+  [['#fClient', 'client'], ['#fObject', 'object'], ['#fMaster', 'masterName']].forEach(function(p){
+    var el = $(p[0]);
+    state[p[1]] = el.value;
+    el.addEventListener('input', function(){ state[p[1]] = el.value; recalc(); });
+  });
+
+  /* ---------- price list wiring ---------- */
+  $('#pricePanel').addEventListener('input', function(e){
+    var t = e.target;
+    if(t.hasAttribute('data-pprice')){
+      var w = wById(t.closest('.pw').dataset.w);
+      w.price = num(t.value);
+      if(w.over !== null && w.over === w.price) w.over = null;
+      recalc(); save();
+    } else if(t.hasAttribute('data-norm')){
+      var w2 = wById(t.closest('.pw').dataset.w);
+      var v = num(t.value), id = t.dataset.norm;
+      if(v > 0) w2.norms[id] = v; else delete w2.norms[id];
+      recalc(); save();
+    } else if(t.hasAttribute('data-pmprice')){
+      var m = mats[t.closest('.pm').dataset.m];
+      m.price = num(t.value);
+      if(m.over !== null && m.over === m.price) m.over = null;
+      recalc(); save();
+    }
+  });
+  $('#pricePanel').addEventListener('change', function(e){
+    var t = e.target;
+    if(t.hasAttribute('data-active')){
+      var row = t.closest('.pw');
+      wById(row.dataset.w).active = t.checked;
+      row.classList.toggle('off', !t.checked);
+      $('#wCount').textContent = works.filter(function(w){ return w.active; }).length + ' из ' + works.length + ' включено';
+      renderWorks(); recalc(); save();
+    } else if(t.hasAttribute('data-base')){
+      wById(t.closest('.pw').dataset.w).base = t.value;
+      renderPriceWorks(); renderWorks(); recalc(); save();
+    }
+  });
+  $('#pricePanel').addEventListener('click', function(e){
+    var d = e.target.closest('[data-delw]');
+    if(!d) return;
+    var id = d.closest('.pw').dataset.w;
+    works = works.filter(function(w){ return w.id !== id; });
+    renderPriceWorks(); renderWorks(); recalc(); save();
+  });
+
+  $('#pMats').addEventListener('click', function(e){
+    var d = e.target.closest('[data-delm]');
+    if(!d) return;
+    var id = d.closest('.pm').dataset.m;
+    delete mats[id];
+    works.forEach(function(w){ delete w.norms[id]; });
+    fullRender(); save();
+  });
+  $('#pMats').addEventListener('change', function(e){
+    var t = e.target, row = t.closest('.pm');
+    if(!row || !(t.hasAttribute('data-mname') || t.hasAttribute('data-munit') || t.hasAttribute('data-msize'))) return;
+    var id = row.dataset.m, m = mats[id];
+    if(!m) return;
+    if(t.hasAttribute('data-mname')){ var nm = t.value.trim(); if(nm) m.name = nm; else t.value = m.name; }
+    if(t.hasAttribute('data-munit')) m.unit = t.value;
+    if(t.hasAttribute('data-msize')){ var sz = num(t.value); if(sz) m.size = sz; else t.value = m.size; }
+    m.pack = 'упаковка ' + nf(m.size, m.size % 1 ? 1 : 0) + ' ' + m.unit;
+    row.querySelector('.derived').textContent = 'Упаковка: ' + m.pack;
+    row.querySelector('label.price span').textContent = '₽ за ' + m.pack;
+    $$('input[data-norm="' + id + '"]').forEach(function(i){
+      var lab = i.closest('.norm');
+      lab.firstElementChild.textContent = m.name;
+      i.nextElementSibling.textContent = m.unit;
+    });
+    renderMats(); recalc(); save();
+  });
+  $('#pWorks').addEventListener('change', function(e){
+    var t = e.target;
+    if(!t.hasAttribute('data-wname')) return;
+    var w = wById(t.closest('.pw').dataset.w);
+    if(!w) return;
+    var nm = t.value.trim();
+    if(!nm){ t.value = w.name; return; }
+    w.name = nm;
+    t.closest('.pw').querySelector('.pw-name').textContent = nm;
+    renderWorks(); recalc(); save();
+  });
+  function normUnit(u){
+    var x = String(u).toLowerCase().replace(/[\s.]/g, '');
+    if(/^(кг|килограмм)/.test(x)) return 'кг';
+    if(/^(л|литр)/.test(x)) return 'л';
+    if(/^(мп|пм|м|погм|погонн)/.test(x)) return 'м.п.';
+    if(/^(м2|м²|кв)/.test(x)) return 'м²';
+    if(/^(шт|штук|уп|компл)/.test(x)) return 'шт';
+    return '';
+  }
+  function parsePasteMats(text){
+    var rows = [], skipped = 0;
+    String(text).split(/\r?\n/).forEach(function(line){
+      line = line.trim();
+      if(!line) return;
+      var p = line.split(/\t|;/).map(function(s){ return s.trim(); });
+      if(p.length < 3){ skipped++; return; }
+      var price = parseFloat(p[p.length - 1].replace(/[^\d.,]/g, '').replace(',', '.'));
+      var unit = '', size = 0;
+      if(p.length >= 4){
+        unit = normUnit(p[1]);
+        size = parseFloat(p[2].replace(',', '.'));
+      } else {
+        var mm = p[1].match(/^([\d.,]+)\s*(.*)$/);
+        if(mm){ size = parseFloat(mm[1].replace(',', '.')); unit = normUnit(mm[2]); }
+      }
+      if(!p[0] || !unit || !isFinite(size) || size <= 0 || !isFinite(price) || price <= 0){ skipped++; return; }
+      rows.push({name: p[0], unit: unit, size: size, price: price});
+    });
+    return {rows: rows, skipped: skipped};
+  }
+  $('#impMSample').addEventListener('click', function(){
+    $('#impM').value = 'Ротбанд;кг;30;640\nГрунтовка бетонконтакт;л;10;1200\nСерпянка; 50 м.п.; 350';
+  });
+  $('#impMBtn').addEventListener('click', function(){
+    var res = parsePasteMats($('#impM').value), note = $('#impMNote');
+    if(!res.rows.length){
+      note.textContent = 'Не нашёл ни одной строки. Нужен формат: название; единица (кг, л, м.п., м², шт); объём упаковки; цена.';
+      note.hidden = false;
+      return;
+    }
+    res.rows.forEach(function(r){ newMat(r.name, r.unit, r.size, r.price); });
+    $('#impM').value = '';
+    fullRender(); save();
+    note.textContent = 'Добавлено материалов: ' + res.rows.length + (res.skipped ? '. Пропущено строк без понятной единицы, объёма или цены: ' + res.skipped : '') + '. Расход на работы укажите внутри каждой работы выше.';
+    note.hidden = false;
+  });
+  $('#addMatForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var name = $('#mName').value.trim(), size = num($('#mSize').value), price = num($('#mPrice').value), note = $('#mNote');
+    if(!name || !size || !price){
+      note.textContent = 'Укажите название, объём упаковки и цену больше нуля.';
+      note.hidden = false;
+      return;
+    }
+    newMat(name, $('#mUnit').value, size, price);
+    $('#mName').value = ''; $('#mSize').value = ''; $('#mPrice').value = '';
+    fullRender(); save();
+    note.textContent = 'Материал добавлен. Чтобы он попал в смету, укажите расход в нужной работе: «Расход материалов на 1 …» внутри работы выше.';
+    note.hidden = false;
+  });
+  $('#aBase').innerHTML = baseOptions('wall');
+  $('#addForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var name = $('#aName').value.trim(), price = num($('#aPrice').value), note = $('#aNote');
+    if(!name || !price){
+      note.textContent = 'Укажите название и цену больше нуля.';
+      note.hidden = false;
+      return;
+    }
+    addWork(name, $('#aBase').value, price);
+    $('#aName').value = ''; $('#aPrice').value = '';
+    renderPriceWorks(); renderWorks(); recalc(); save();
+    note.textContent = 'Добавлено в прайс. Во вкладке «Смета» отметьте комнаты в шаге 2, и работа попадёт в расчёт.';
+    note.hidden = false;
+  });
+  $('#impSample').addEventListener('click', function(){
+    $('#imp').value = 'Грунтовка потолка;м²;60\nСтяжка пола;м²;700\nМонтаж короба из ГКЛ;м.п.;900\nУборка после работ;шт;1500';
+  });
+  $('#impBtn').addEventListener('click', function(){
+    var res = parsePaste($('#imp').value), note = $('#impNote');
+    if(!res.rows.length){
+      note.textContent = 'Не нашёл ни одной строки. Нужен формат: название; единица; цена.';
+      note.hidden = false;
+      return;
+    }
+    res.rows.forEach(function(r){ addWork(r.name, guessBase(r.name, r.unit), r.price); });
+    $('#imp').value = '';
+    renderPriceWorks(); renderWorks(); recalc(); save();
+    note.textContent = 'Добавлено позиций: ' + res.rows.length + (res.skipped ? '. Пропущено строк без цены: ' + res.skipped : '') + '. Проверьте в списке выше, от чего считается каждая работа.';
+    note.hidden = false;
+  });
+  var resetArmed = false, resetTimer = null;
+  $('#resetPrice').addEventListener('click', function(){
+    var b = $('#resetPrice');
+    if(!resetArmed){
+      resetArmed = true;
+      b.textContent = 'Точно вернуть? Нажмите ещё раз';
+      resetTimer = setTimeout(function(){ resetArmed = false; b.textContent = 'Вернуть прайс из примера'; }, 4000);
+      return;
+    }
+    clearTimeout(resetTimer);
+    resetArmed = false;
+    b.textContent = 'Вернуть прайс из примера';
+    var ids = state.rooms.map(function(r){ return r.id; });
+    mats = makeMats(); mid = 1;
+    works = makeWorks();
+    works.forEach(function(w){ w.rooms = w.rooms.filter(function(x){ return ids.indexOf(x) >= 0; }); });
+    cid = 1;
+    try { localStorage.removeItem(LS); } catch(err){}
+    fullRender();
+  });
+
+  /* ---------- send, copy, client ---------- */
+  $('#sendBtn').addEventListener('click', function(){
+    if(state.status !== 'draft') return;
+    state.status = 'sent';
+    log('Смета отправлена клиенту. В сервисе уйдёт ссылкой в Telegram, WhatsApp или VK.', 'info');
+    refresh();
+  });
+  $('#copyBtn').addEventListener('click', function(){
+    var text = buildText(calc());
+    var btn = $('#copyBtn'), box = $('#copyBox');
+    function done(){ btn.textContent = 'Скопировано'; setTimeout(function(){ btn.textContent = 'Скопировать текстом'; }, 1800); }
+    function fallback(){ box.value = text; box.hidden = false; box.focus(); box.select(); }
+    try {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } catch(err){ fallback(); }
+  });
+  $('#resetBtn').addEventListener('click', function(){
+    state.status = 'draft'; state.opened = false; state.approved = false; state.approvedAt = null; state.events = [];
+    refresh();
+  });
+
+  $('#clientPanel').addEventListener('pointerdown', markOpened);
+  $('#approveBtn').addEventListener('click', function(){
+    if(state.status !== 'sent' || state.approved) return;
+    markOpened();
+    state.approved = true; state.approvedAt = new Date();
+    log('Клиент согласовал смету на ' + rub(calc().total), 'ok');
+    refresh();
+  });
+  $('#askBtn').addEventListener('click', function(){
+    markOpened();
+    var f = $('#askForm'); f.hidden = !f.hidden;
+    $('#cNote').hidden = true;
+    if(!f.hidden) $('#askText').focus();
+  });
+  $('#askForm').addEventListener('submit', function(e){
+    e.preventDefault();
+    var t = $('#askText').value.trim(), note = $('#cNote');
+    if(!t){ note.textContent = 'Напишите вопрос, и мастер его увидит.'; note.hidden = false; return; }
+    if(!$('#askConsent').checked){ note.textContent = 'Чтобы отправить вопрос, отметьте согласие на обработку персональных данных.'; note.hidden = false; return; }
+    log('Вопрос от клиента: «' + t + '»', 'q');
+    $('#askText').value = '';
+    $('#askConsent').checked = false;
+    $('#askForm').hidden = true;
+    note.textContent = 'Вопрос отправлен. Мастер ответит вам лично.';
+    note.hidden = false;
+    refresh();
+  });
+
+  /* ---------- drafts ---------- */
+  var DLS = 'smetka-drafts-v1';
+  var drafts = [];
+  var lastSig = '';
+  state.draftId = null;
+  var ST_LABEL = {draft: 'Черновик', sent: 'Отправлена', approved: 'Согласована'};
+
+  function core(){
+    return {
+      client: state.client, object: state.object, masterName: state.masterName, discount: state.discount, uid: uid,
+      rooms: JSON.parse(JSON.stringify(state.rooms)),
+      works: works.map(function(w){ return {id: w.id, rooms: w.rooms.slice(), over: w.over, skip: !!w.skip}; }),
+      mats: Object.keys(mats).reduce(function(o, id){ o[id] = {on: mats[id].on, over: mats[id].over}; return o; }, {})
+    };
+  }
+  function sig(){ return JSON.stringify({c: core(), s: state.status, a: state.approved}); }
+  function isDirty(){ return sig() !== lastSig; }
+  function loadDrafts(){
+    try { var d = JSON.parse(localStorage.getItem(DLS)); if(Array.isArray(d)) drafts = d; } catch(e){}
+  }
+  function storeDrafts(){
+    try { localStorage.setItem(DLS, JSON.stringify(drafts)); } catch(e){}
+  }
+  function persistCurrent(){
+    var snap = core();
+    snap.total = calc().total;
+    var st = {
+      status: state.status, opened: state.opened, approved: state.approved,
+      approvedAt: state.approvedAt ? state.approvedAt.getTime() : null,
+      events: state.events.map(function(e){ return {t: e.t.getTime(), text: e.text, kind: e.kind}; })
+    };
+    var d = state.draftId ? drafts.filter(function(x){ return x.id === state.draftId; })[0] : null;
+    if(!d){ d = {id: 'd' + Date.now()}; drafts.push(d); state.draftId = d.id; }
+    d.savedAt = Date.now(); d.snap = snap; d.st = st;
+    drafts.sort(function(a, b){ return b.savedAt - a.savedAt; });
+    lastSig = sig();
+    storeDrafts(); renderDrafts();
+    return d;
+  }
+  function applyState(s, st){
+    state.client = s.client; state.object = s.object; state.masterName = s.masterName; state.discount = s.discount;
+    state.rooms = JSON.parse(JSON.stringify(s.rooms));
+    uid = Math.max(uid, s.uid || 0);
+    works.forEach(function(w){
+      var sw = s.works.filter(function(x){ return x.id === w.id; })[0];
+      w.rooms = sw ? sw.rooms.slice() : [];
+      w.over = sw ? sw.over : null;
+      w.skip = sw ? !!sw.skip : false;
+    });
+    Object.keys(mats).forEach(function(id){
+      var sm = s.mats[id];
+      mats[id].on = sm ? sm.on : true;
+      mats[id].over = sm ? sm.over : null;
+    });
+    st = st || {status: 'draft', opened: false, approved: false, approvedAt: null, events: []};
+    state.status = st.status; state.opened = !!st.opened; state.approved = !!st.approved;
+    state.approvedAt = st.approvedAt ? new Date(st.approvedAt) : null;
+    state.events = (st.events || []).map(function(e){ return {t: new Date(e.t), text: e.text, kind: e.kind}; });
+    $('#fClient').value = state.client; $('#fObject').value = state.object; $('#fMaster').value = state.masterName;
+    $('#disc').value = state.discount;
+    $('#copyBox').hidden = true;
+    $('#askForm').hidden = true; $('#cNote').hidden = true;
+    $('#saveNote').hidden = true;
+    renderRooms(); renderWorks(); renderMats(); recalc(); refresh();
+    lastSig = sig();
+    renderDrafts();
+    window.scrollTo(0, 0);
+  }
+  function renderDrafts(){
+    $('#dCount').textContent = drafts.length ? '· ' + drafts.length : '';
+    var el = $('#dList');
+    if(!drafts.length){
+      el.innerHTML = '<li class="dr empty">Пока пусто. Нажмите «Сохранить в черновики» под итогом, и смета появится здесь.</li>';
+      return;
+    }
+    el.innerHTML = drafts.map(function(d){
+      var st = d.st && d.st.approved ? 'approved' : (d.st ? d.st.status : 'draft');
+      var when = new Date(d.savedAt).toLocaleString('ru-RU', {day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'});
+      var cur = d.id === state.draftId;
+      return '<li class="dr' + (cur ? ' cur' : '') + '" data-id="' + d.id + '"><div class="dr-main"><b>' + esc(d.snap.client || 'Без имени') + '</b>' +
+        '<span class="dr-sub">' + esc(d.snap.object || 'Адрес не указан') + '</span>' +
+        '<span class="dr-meta num">' + rub(d.snap.total) + ' · ' + when + ' · ' + ST_LABEL[st] + (cur ? ' · открыта сейчас' : '') + '</span></div>' +
+        '<div class="dr-act"><button type="button" class="btn" data-open>Открыть</button><button type="button" class="btn" data-deld>Удалить</button></div></li>';
+    }).join('');
+  }
+  function newEstimate(){
+    var saved = false;
+    if(isDirty()){ persistCurrent(); saved = true; }
+    var r = {id: uid++, name: 'Комната 1', l: 3, w: 4, h: 2.7, win: 1, door: 1};
+    var s = {
+      client: '', object: '', masterName: state.masterName, discount: 0, uid: uid, rooms: [r],
+      works: works.map(function(w){ return {id: w.id, rooms: ['plaster', 'putty', 'paint'].indexOf(w.id) >= 0 ? [r.id] : [], over: null, skip: false}; }),
+      mats: {}
+    };
+    state.draftId = null;
+    applyState(s, null);
+    var n = $('#newNote');
+    n.hidden = false;
+    n.textContent = saved ? 'Предыдущая смета сохранена в черновики.' : 'Новая смета создана.';
+    $('#fClient').focus();
+  }
+  $('#newBtn').addEventListener('click', newEstimate);
+  $('#saveBtn').addEventListener('click', function(){
+    if(state.status !== 'draft') return;
+    persistCurrent();
+    var n = $('#saveNote');
+    n.hidden = false;
+    n.textContent = 'Сохранено в черновики в ' + hhmm(new Date()) + '. Список открывается кнопкой «Черновики» вверху страницы.';
+  });
+  $('.panel-master').addEventListener('input', function(){ $('#saveNote').hidden = true; });
+  $('#dList').addEventListener('click', function(e){
+    var li = e.target.closest('.dr');
+    if(!li) return;
+    var id = li.dataset.id;
+    var d = drafts.filter(function(x){ return x.id === id; })[0];
+    if(!d) return;
+    var del = e.target.closest('[data-deld]');
+    if(del){
+      if(del.dataset.armed !== '1'){
+        del.dataset.armed = '1';
+        del.textContent = 'Удалить?';
+        setTimeout(function(){ del.dataset.armed = ''; del.textContent = 'Удалить'; }, 3000);
+        return;
+      }
+      drafts = drafts.filter(function(x){ return x.id !== id; });
+      if(state.draftId === id){ state.draftId = null; lastSig = sig(); }
+      storeDrafts(); renderDrafts();
+      return;
+    }
+    if(e.target.closest('[data-open]')){
+      $('#draftsBox').open = false;
+      if(state.draftId === id) return;
+      var saved = false;
+      if(isDirty()){ persistCurrent(); saved = true; }
+      state.draftId = id;
+      applyState(d.snap, d.st);
+      var n = $('#newNote');
+      n.hidden = false;
+      n.textContent = (saved ? 'Предыдущая смета сохранена в черновики. ' : '') + 'Открыт черновик «' + (d.snap.client || 'Без имени') + '».';
+    }
+  });
+
+  /* ---------- documents, beta survey ---------- */
+  var SURVEY_LS = 'smetka-survey-v1';
+  var lastFocus = null, sheetBack = null;
+
+  function openSheet(title, html){
+    var ov = $('#overlay');
+    if(ov.hidden) lastFocus = document.activeElement;
+    $('#sheetTitle').textContent = title;
+    $('#sheetBody').innerHTML = html;
+    ov.hidden = false;
+    $('#sheet').focus();
+  }
+  function closeSheet(){
+    $('#overlay').hidden = true;
+    sheetBack = null;
+    if(lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  $('#sheetClose').addEventListener('click', closeSheet);
+  $('#overlay').addEventListener('click', function(e){ if(e.target === $('#overlay')) closeSheet(); });
+
+  var DOCS = {
+    policy: {title: 'Политика конфиденциальности', items: [
+      'Кто оператор: ФИО ИП, ИНН, адрес и почта для обращений.',
+      'Какие данные собираются: имя и контакты мастера; имя клиента и адрес объекта из смет; контакт из анкеты, если его оставили; технические данные (IP, cookie), если они есть.',
+      'Цели и основания: ведение аккаунта, расчёт и отправка смет, обратная связь по бете, поддержка. Для каждой цели своё основание.',
+      'Где хранятся данные: базы с данными граждан РФ размещены на серверах в России, с названием хостинга.',
+      'Кому передаются: хостинг, сервис рассылки. Передачи за границу нет, если это действительно так.',
+      'Сроки хранения по каждой цели и порядок удаления данных.',
+      'Права пользователя, как отозвать согласие и в какой срок вы ответите.'
+    ]},
+    consent: {title: 'Согласие на обработку персональных данных', items: [
+      'Отдельный документ: его нельзя вшивать в оферту, правила сервиса или договор.',
+      'Свой текст для каждой формы сбора данных: регистрация, анкета, вопрос клиента, оплата, рассылка, cookie. Согласие «на всё сразу» не годится.',
+      'Конкретные цели, перечень данных, действия с ними, срок, получатели и способ отзыва.',
+      'Галочку пользователь ставит сам, предустановленной её лучше не делать. Ссылка на политику стоит рядом.'
+    ]},
+    offer: {title: 'Публичная оферта', items: [
+      'Предмет: доступ к сервису расчёта смет, реквизиты ИП.',
+      'Тарифы и порядок оплаты после беты, оплата по счёту для ИП и организаций.',
+      'Автопродление: как работает, как отключить, порядок возврата.',
+      'Ограничение ответственности: расчёт ориентировочный, цены и нормы расхода проверяет мастер.',
+      'Данные клиентов мастера (имя, адрес объекта): сервис обрабатывает их по поручению мастера, это нужно прописать.',
+      'Порядок изменения условий и разрешения споров.'
+    ]}
+  };
+  function openDoc(id){
+    var d = DOCS[id];
+    if(!d) return;
+    openSheet(d.title,
+      '<p class="note">Здесь будет текст документа. Ниже то, что в нём должно быть. Итоговый текст подготовьте с юристом: он должен совпадать с тем, как сервис обрабатывает данные на самом деле.</p>' +
+      '<ul class="doc-list">' + d.items.map(function(i){ return '<li>' + i + '</li>'; }).join('') + '</ul>' +
+      '<div class="row-btns"><button type="button" class="btn primary" data-doc-back>Закрыть</button></div>');
+  }
+
+  var GUIDE = {
+    ios: ['Откройте сайт в <b>Safari</b>. В другом браузере на iPhone ярлык может не создаться.',
+      'Нажмите <b>«Поделиться»</b>: квадрат со стрелкой вверх, внизу экрана (на iPad вверху).',
+      'Прокрутите список вниз и выберите <b>«На экран «Домой»»</b>. Если пункта нет, нажмите «Править действия» и добавьте его.',
+      'Проверьте название (например, «Сметка») и нажмите <b>«Добавить»</b>.',
+      'Иконка появится на рабочем экране. Сайт откроется во весь экран, как приложение.'],
+    and: ['Откройте сайт в <b>Chrome</b>.',
+      'Нажмите <b>⋮</b> (три точки) в правом верхнем углу.',
+      'Выберите <b>«Добавить на главный экран»</b>. Иногда пункт называется «Установить приложение».',
+      'Проверьте название и нажмите <b>«Добавить»</b>. Если спросит, как добавить, выберите «Добавить автоматически».',
+      'Иконка появится на рабочем столе. Если её нет, пролистайте экраны или поищите в списке приложений.'],
+    ya: ['Откройте сайт в <b>Яндекс Браузере</b>.',
+      'Нажмите <b>⋮</b> или значок меню (три точки или полоски) справа от адресной строки.',
+      'Выберите <b>«Добавить на главный экран»</b> (иногда он спрятан в «Ещё» или «Поделиться»).',
+      'Подтвердите добавление. Иконка появится на рабочем столе.'],
+    other: ['<b>Samsung Internet:</b> меню (три полоски) → «Добавить на» → «Главный экран».',
+      '<b>Firefox:</b> меню ⋮ → «Установить» или «Добавить на главный экран».',
+      '<b>Не нашли пункт:</b> откройте сайт в Chrome (Android) или Safari (iPhone), там он точно есть.']
+  };
+  var guideTab = 'ios';
+  function guideTabFor(){ return /android/i.test(navigator.userAgent) ? 'and' : 'ios'; }
+  function renderGuide(){
+    var tabs = [['ios', 'iPhone · Safari'], ['and', 'Android · Chrome'], ['ya', 'Яндекс Браузер'], ['other', 'Другие']];
+    $('#sheetBody').innerHTML =
+      '<p class="note">Так Сметка будет открываться одним нажатием, как приложение: без поиска ссылки и вкладок.</p>' +
+      '<div class="g-tabs" role="group" aria-label="Ваш телефон и браузер">' + tabs.map(function(t){
+        return '<button type="button" data-gtab="' + t[0] + '" aria-pressed="' + (t[0] === guideTab) + '">' + t[1] + '</button>'; }).join('') + '</div>' +
+      '<ol class="g-steps">' + GUIDE[guideTab].map(function(s){ return '<li>' + s + '</li>'; }).join('') + '</ol>' +
+      '<p class="note">Названия пунктов могут чуть отличаться в зависимости от версии телефона. Иконка берётся из сайта: сначала откройте именно ту ссылку, которую вам дали.</p>' +
+      '<div class="row-btns"><button type="button" class="btn primary" data-doc-back>Понятно</button></div>';
+  }
+  function openGuide(){
+    guideTab = guideTabFor();
+    openSheet('Иконка на экран телефона', '');
+    renderGuide();
+  }
+
+  /* survey: answers live on the tester's device and go to the author as copied text */
+  var surveyForm = $('#surveyForm');
+  function radioVal(name){ var r = surveyForm.querySelector('input[name="' + name + '"]:checked'); return r ? r.value : ''; }
+  function checkVals(name){ return $$('input[name="' + name + '"]:checked', surveyForm).map(function(i){ return i.value; }); }
+  function txt(name){ var e = surveyForm.elements[name]; return e ? String(e.value).trim() : ''; }
+  function collectSurvey(){
+    return {
+      rating: radioVal('rating'), need: radioVal('need'), liked: txt('liked'), disliked: txt('disliked'),
+      feat: checkVals('feat'), pay: radioVal('pay'), billing: radioVal('billing'),
+      role: radioVal('role'), volume: radioVal('volume'), how: checkVals('how'),
+      cname: txt('cname'), ccontact: txt('ccontact'), consent: !!surveyForm.elements.cconsent.checked
+    };
+  }
+  function applySurvey(a){
+    ['rating', 'need', 'pay', 'billing', 'role', 'volume'].forEach(function(k){
+      $$('input[name="' + k + '"]', surveyForm).forEach(function(i){ i.checked = i.value === a[k]; });
+    });
+    ['feat', 'how'].forEach(function(k){
+      $$('input[name="' + k + '"]', surveyForm).forEach(function(i){ i.checked = (a[k] || []).indexOf(i.value) >= 0; });
+    });
+    ['liked', 'disliked', 'cname', 'ccontact'].forEach(function(k){ surveyForm.elements[k].value = a[k] || ''; });
+    surveyForm.elements.cconsent.checked = !!a.consent;
+  }
+  function surveyText(a){
+    var L = ['Анкета бета-тестера «Сметка»'];
+    function add(label, v){ if(v && String(v).length) L.push(label + ': ' + v); }
+    add('Удобство', a.rating ? a.rating + ' из 5' : '');
+    add('Нужен ли такой инструмент', a.need);
+    add('Понравилось', a.liked);
+    add('Не понравилось или не хватило', a.disliked);
+    add('Нужные возможности', a.feat.join(', '));
+    add('Готовность платить 590 ₽ в месяц', a.pay);
+    add('Как удобнее платить', a.billing);
+    add('Кто вы', a.role);
+    add('Смет в месяц', a.volume);
+    add('Как считает сейчас', a.how.join(', '));
+    if(a.cname || a.ccontact) add('Контакт', [a.cname, a.ccontact].filter(Boolean).join(', ') + (a.consent ? ' (согласие на обработку персональных данных дано)' : ''));
+    return L.join('\n');
+  }
+  function saveSurvey(done){
+    try { localStorage.setItem(SURVEY_LS, JSON.stringify({a: collectSurvey(), done: !!done})); } catch(e){}
+  }
+  function showSurveyDone(a){
+    $('#surveyOut').value = surveyText(a);
+    surveyForm.hidden = true;
+    $('#surveyDone').hidden = false;
+  }
+  function initSurvey(){
+    try {
+      var d = JSON.parse(localStorage.getItem(SURVEY_LS));
+      if(d && d.a){
+        applySurvey(d.a);
+        if(d.done) showSurveyDone(collectSurvey());
+      }
+    } catch(e){}
+  }
+  var surveyTimer = null;
+  function onSurveyInput(){
+    $('#surveyErr').hidden = true;
+    clearTimeout(surveyTimer);
+    surveyTimer = setTimeout(function(){ saveSurvey(false); }, 400);
+  }
+  surveyForm.addEventListener('input', onSurveyInput);
+  surveyForm.addEventListener('change', onSurveyInput);
+  surveyForm.addEventListener('submit', function(e){
+    e.preventDefault();
+    var a = collectSurvey(), miss = [];
+    if(!a.rating) miss.push('удобство');
+    if(!a.need) miss.push('нужен ли вам инструмент');
+    if(!a.pay) miss.push('готовность платить');
+    if((a.cname || a.ccontact) && !a.consent) miss.push('согласие на обработку персональных данных');
+    var err = $('#surveyErr');
+    if(miss.length){
+      err.textContent = 'Не заполнено: ' + miss.join(', ') + '.';
+      err.hidden = false;
+      return;
+    }
+    err.hidden = true;
+    clearTimeout(surveyTimer);
+    saveSurvey(true);
+    showSurveyDone(a);
+    var d = $('#surveyDone');
+    if(d.scrollIntoView) d.scrollIntoView({block: 'start'});
+  });
+  $('#surveyEdit').addEventListener('click', function(){
+    $('#surveyDone').hidden = true;
+    surveyForm.hidden = false;
+    saveSurvey(false);
+  });
+  $('#surveyCopy').addEventListener('click', function(){
+    var btn = $('#surveyCopy'), box = $('#surveyOut');
+    function done(){ btn.textContent = 'Скопировано'; setTimeout(function(){ btn.textContent = 'Скопировать ответы'; }, 1800); }
+    function fallback(){ box.focus(); box.select(); }
+    try { navigator.clipboard.writeText(box.value).then(done, fallback); } catch(err){ fallback(); }
+  });
+
+  function setView(v){
+    document.body.dataset.view = v;
+    $('#tabMaster').setAttribute('aria-pressed', String(v === 'master'));
+    $('#tabPrice').setAttribute('aria-pressed', String(v === 'price'));
+    $('#tabPlan').setAttribute('aria-pressed', String(v === 'plan'));
+    $('#tabClient').setAttribute('aria-pressed', String(v === 'client'));
+    window.scrollTo(0, 0);
+    if(v === 'client') markOpened();
+  }
+  $('#tabMaster').addEventListener('click', function(){ setView('master'); });
+  $('#tabPrice').addEventListener('click', function(){ setView('price'); });
+  $('#tabPlan').addEventListener('click', function(){ setView('plan'); });
+  $('#tabClient').addEventListener('click', function(){ setView('client'); });
+  $('#dockView').addEventListener('click', function(){ setView('client'); });
+  document.addEventListener('click', function(e){
+    var t = e.target;
+    if(!t || !t.closest) return;
+    if(t.closest('[data-goprice]')){ setView('price'); return; }
+    if(t.closest('[data-goplan]')){
+      closeSheet(); setView('plan');
+      var sv = $('#survey');
+      if(sv && sv.scrollIntoView) sv.scrollIntoView({block: 'start'});
+      return;
+    }
+    var gt = t.closest('[data-gtab]');
+    if(gt){ guideTab = gt.dataset.gtab; renderGuide(); return; }
+    if(t.closest('[data-guide]')){ openGuide(); return; }
+    var d = t.closest('[data-doc]');
+    if(d){ openDoc(d.dataset.doc); return; }
+    if(t.closest('[data-doc-back]')){ closeSheet(); return; }
+    if(t.closest('[data-sheet-close]')) closeSheet();
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && !$('#overlay').hidden) closeSheet();
+  });
+
+  document.body.dataset.view = 'master';
+  load();
+  renderRooms(); fullRender(); refresh();
+  loadDrafts(); lastSig = sig(); renderDrafts();
+  initSurvey();
+})();
+</script>
+
+</body>
+</html>
